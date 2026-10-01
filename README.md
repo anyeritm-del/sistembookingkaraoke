@@ -62,7 +62,10 @@ putus, timer tetap berjalan dan alarm tetap bunyi.
 4. Buat tab dan header otomatis (opsi `-seed` menambah 4 contoh room):
 
    ```sh
-   SPREADSHEET_ID=xxxx GOOGLE_SERVICE_ACCOUNT_JSON="$(cat key.json)" go run ./cmd/sheetsetup -seed
+   # isi .env (lihat .env.example), GOOGLE_SERVICE_ACCOUNT_FILE=/path/ke/key.json
+   set -a; . ./.env; set +a
+   go run ./cmd/sheetsetup -check   # hanya membaca: daftar tab
+   go run ./cmd/sheetsetup -seed    # buat tab + 4 contoh room
    ```
 
    Perintah ini hanya menambah tab yang belum ada; data yang sudah ada tidak diubah.
