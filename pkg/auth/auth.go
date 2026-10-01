@@ -1,11 +1,10 @@
-// Package auth handles staff login with a shared PIN and a signed,
-// stateless session cookie (no session storage is needed on Vercel).
+// Package auth handles PIN hashing and a signed, stateless session cookie
+// (no session storage is needed on Vercel).
 package auth
 
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -17,51 +16,55 @@ import (
 // CookieName is the session cookie name.
 const CookieName = "karaoke_session"
 
-// Auth checks the PIN and issues and verifies session tokens.
+// Auth issues and verifies session tokens. The token only says who the user
+// is; their role is read again from the store on every request.
 type Auth struct {
-	pin    []byte
 	secret []byte
 	ttl    time.Duration
 	now    func() time.Time
 }
 
 // New creates an Auth. secret must be long and random (32+ bytes).
-func New(pin, secret string, ttl time.Duration) (*Auth, error) {
-	if len(pin) < 4 {
-		return nil, errors.New("ADMIN_PIN minimal 4 karakter")
-	}
+func New(secret string, ttl time.Duration) (*Auth, error) {
 	if len(secret) < 32 {
 		return nil, errors.New("SESSION_SECRET minimal 32 karakter")
 	}
-	return &Auth{pin: []byte(pin), secret: []byte(secret), ttl: ttl, now: time.Now}, nil
+	return &Auth{secret: []byte(secret), ttl: ttl, now: time.Now}, nil
 }
 
-// CheckPIN compares the PIN in constant time.
-func (a *Auth) CheckPIN(pin string) bool {
-	return subtle.ConstantTimeCompare([]byte(pin), a.pin) == 1
+// Token returns "<username b64>.<expiry-unix>.<signature>".
+func (a *Auth) Token(username string) string {
+	msg := base64.RawURLEncoding.EncodeToString([]byte(username)) + "." +
+		strconv.FormatInt(a.now().Add(a.ttl).Unix(), 10)
+	return msg + "." + a.sign(msg)
 }
 
-// Token returns a token "<expiry-unix>.<signature>".
-func (a *Auth) Token() string {
-	exp := strconv.FormatInt(a.now().Add(a.ttl).Unix(), 10)
-	return exp + "." + a.sign(exp)
-}
-
-// Valid reports whether the token is signed by us and not expired.
-func (a *Auth) Valid(token string) bool {
-	exp, sig, ok := strings.Cut(token, ".")
-	if !ok || !hmac.Equal([]byte(sig), []byte(a.sign(exp))) {
-		return false
+// Username returns the user of a valid, unexpired token.
+func (a *Auth) Username(token string) (string, bool) {
+	i := strings.LastIndexByte(token, '.')
+	if i < 0 || !hmac.Equal([]byte(token[i+1:]), []byte(a.sign(token[:i]))) {
+		return "", false
+	}
+	userB64, exp, ok := strings.Cut(token[:i], ".")
+	if !ok {
+		return "", false
 	}
 	unix, err := strconv.ParseInt(exp, 10, 64)
-	return err == nil && a.now().Unix() < unix
+	if err != nil || a.now().Unix() >= unix {
+		return "", false
+	}
+	user, err := base64.RawURLEncoding.DecodeString(userB64)
+	if err != nil || len(user) == 0 {
+		return "", false
+	}
+	return string(user), true
 }
 
-// SetCookie writes the session cookie.
-func (a *Auth) SetCookie(w http.ResponseWriter) {
+// SetCookie writes the session cookie for username.
+func (a *Auth) SetCookie(w http.ResponseWriter, username string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     CookieName,
-		Value:    a.Token(),
+		Value:    a.Token(username),
 		Path:     "/",
 		MaxAge:   int(a.ttl / time.Second),
 		HttpOnly: true,
@@ -78,10 +81,13 @@ func ClearCookie(w http.ResponseWriter) {
 	})
 }
 
-// LoggedIn reports whether the request has a valid session cookie.
-func (a *Auth) LoggedIn(r *http.Request) bool {
+// RequestUsername returns the username from the request's session cookie.
+func (a *Auth) RequestUsername(r *http.Request) (string, bool) {
 	c, err := r.Cookie(CookieName)
-	return err == nil && a.Valid(c.Value)
+	if err != nil {
+		return "", false
+	}
+	return a.Username(c.Value)
 }
 
 func (a *Auth) sign(msg string) string {

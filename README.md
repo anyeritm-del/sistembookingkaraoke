@@ -5,12 +5,41 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 
 | Bagian | Lokasi | Keterangan |
 |---|---|---|
-| Halaman staf | `/` ([public/index.html](public/index.html)) | Login PIN, jadwal per room, booking baru, check-in, perpanjang, check-out, batal, laporan harian |
+| Halaman staf | `/` ([public/index.html](public/index.html)) | Login username + PIN, jadwal per room, booking, check-in, perpanjang, check-out, batal, laporan, aktivitas, kelola room & user |
 | Halaman TV | `/tv?room=R01&key=...` ([public/tv.html](public/tv.html)) | Sisa waktu, peringatan 5 menit, alarm saat waktu habis |
 | API | `/api/*` ([api/index.go](api/index.go) → [pkg/httpapi](pkg/httpapi)) | Satu Go function di Vercel |
 | Aturan bisnis | [pkg/booking](pkg/booking) | Harga, cek bentrok, status, laporan |
 | Penyimpanan | [pkg/sheetstore](pkg/sheetstore) | Google Sheets API |
 | Aplikasi Android TV | [android-tv/](android-tv) | APK WebView fullscreen, auto-start saat TV nyala |
+
+## Role dan hak akses
+
+| Aksi | Staff | Supervisor | Admin |
+|---|:-:|:-:|:-:|
+| Lihat jadwal, booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |
+| Batal booking | | ✓ | ✓ |
+| Laporan harian, log aktivitas | | ✓ | ✓ |
+| Kelola room (tambah, ubah nama/tarif, aktif/nonaktif) | | | ✓ |
+| Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |
+
+- Tabel hak akses ada di satu tempat: [pkg/booking/roles.go](pkg/booking/roles.go).
+  Server memeriksanya di setiap request; halaman web hanya menyembunyikan tombol.
+- Role user dibaca ulang dari sheet di setiap request (cache 5 detik), jadi
+  menonaktifkan user atau menurunkan role langsung berlaku.
+- Semua user bisa mengganti PIN sendiri (tombol **Ganti PIN**). PIN 6-12 angka;
+  angka sama (`111111`) atau berurutan (`123456`) ditolak.
+- Admin tidak bisa menurunkan role atau menonaktifkan akun sendiri, dan harus
+  selalu ada minimal satu admin aktif.
+- Salah PIN 5 kali: username dikunci 5 menit.
+- **Login pertama**: selama tab `Users` kosong, login dengan username `admin`
+  dan PIN = `ADMIN_PIN`. Akun admin itu langsung tersimpan di sheet; ganti PIN-nya
+  setelah login. Jika semua admin terkunci, kosongkan isi tab `Users` (sisakan
+  header) untuk memakai `ADMIN_PIN` lagi.
+
+**Log aktivitas** (tab `Activity`): login, ganti/reset PIN, booking baru,
+check-in, perpanjang, check-out, batal, perubahan room dan user, lengkap
+dengan waktu, username, dan detail (mis. `tarif Rp100.000 -> Rp120.000`).
+Booking juga menyimpan `created_by`, `checked_in_by`, `checked_out_by`, `cancelled_by`.
 
 ## Alur booking
 
@@ -72,11 +101,19 @@ putus, timer tetap berjalan dan alarm tetap bunyi.
 
 Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
 
-- **Rooms**: `id | name | rate_per_hour | active` — edit langsung di sheet
-  untuk menambah room atau mengubah tarif. `active` = TRUE/FALSE.
+- **Rooms**: `id | name | rate_per_hour | active` — sebaiknya diubah lewat
+  menu **Room** (admin) supaya tercatat di log; edit langsung di sheet tetap bisa.
 - **Bookings**: `id | room_id | customer_name | phone | start | end | duration_minutes | status | rate_per_hour | total_price | notes | checked_in_at | checked_out_at | created_at | updated_at`
   — diisi oleh aplikasi. Waktu dalam WIB, format `YYYY-MM-DD HH:MM`.
   Boleh menambah kolom sendiri di kanan; isinya tidak akan ditimpa.
+- **Users**: `username | name | role | pin_hash | active | created_at | updated_at`
+  — kelola lewat menu **User**. `pin_hash` tidak bisa dibalik menjadi PIN tanpa
+  `PIN_PEPPER` yang hanya ada di server. Batasi siapa yang bisa membuka spreadsheet.
+- **Activity**: `time | username | action | booking_id | room_id | detail` — hanya ditambah, jangan diedit.
+
+Setelah update aplikasi yang menambah kolom/tab, jalankan lagi
+`go run ./cmd/sheetsetup -check` lalu `go run ./cmd/sheetsetup`. Perintah ini
+hanya menambah tab dan kolom di ujung kanan; data lama tidak diubah.
 
 > Jangan ubah nama header atau isi kolom `id`. Hindari mengedit baris booking
 > yang sedang aktif langsung di sheet; pakai halaman staf.
@@ -89,8 +126,9 @@ Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
 
    | Nama | Isi |
    |---|---|
-   | `ADMIN_PIN` | PIN staf, minimal 6 digit disarankan |
+   | `ADMIN_PIN` | PIN untuk login pertama sebagai `admin` (6-12 angka) |
    | `SESSION_SECRET` | `openssl rand -base64 48` |
+   | `PIN_PEPPER` | `openssl rand -base64 48` — **jangan pernah diganti** setelah ada user |
    | `TV_KEY` | `openssl rand -hex 16` |
    | `SPREADSHEET_ID` | ID spreadsheet |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | isi file JSON, atau base64-nya: `base64 -i key.json` |
@@ -136,9 +174,11 @@ di `app/build.gradle.kts`; simpan keystore di luar repo.
 
 ```sh
 # Tanpa Google Sheets (data di memori, hilang saat server berhenti):
-STORE=memory ADMIN_PIN=123456 \
-SESSION_SECRET=dev-secret-dev-secret-dev-secret-123 TV_KEY=dev-tv-key-123456 \
+STORE=memory ADMIN_PIN=112233 \
+SESSION_SECRET=dev-secret-dev-secret-dev-secret-123 \
+PIN_PEPPER=dev-pepper-dev-pepper-dev-pepper-12 TV_KEY=dev-tv-key-123456 \
 go run ./cmd/devserver
+# Login: username admin, PIN 112233
 # Staf: http://localhost:8080   TV: http://localhost:8080/tv?room=R01&key=dev-tv-key-123456
 
 go test ./...        # unit test aturan booking, auth, parsing sheet, API
@@ -156,8 +196,8 @@ vercel build         # cek build Vercel secara lokal (perlu `vercel link`)
   diantre dan cek bentrok selalu membaca data terbaru. Dua staf yang menyimpan
   booking ke room dan jam yang sama di detik yang sama masih bisa lolos
   (sangat jarang untuk tim kecil).
-- **Satu PIN untuk semua staf**: tidak tercatat siapa yang melakukan aksi.
-  Gagal login diperlambat 1 detik; gunakan PIN 6+ digit dan ganti berkala.
+- **Kunci login per instance**: hitungan salah PIN disimpan di memori server,
+  jadi berlaku per instance Vercel. Setiap gagal login juga diperlambat 1 detik.
 - **Sheet terus bertambah**: arsipkan baris `Bookings` lama (misal per tahun)
   ke spreadsheet lain agar baca tetap cepat.
 - Rollback: Vercel menyimpan semua deployment; pakai *Instant Rollback* di

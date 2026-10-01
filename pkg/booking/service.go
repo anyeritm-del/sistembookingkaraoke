@@ -25,15 +25,20 @@ const (
 // still race; with a small staff team this is rare, and the conflict check
 // runs again on every write.
 type Service struct {
-	store Store
-	loc   *time.Location
-	now   func() time.Time
-	mu    sync.Mutex
+	store        Store
+	loc          *time.Location
+	now          func() time.Time
+	mu           sync.Mutex
+	pins         PINHasher
+	bootstrapPIN string
+	guard        loginGuard
 }
 
 // NewService creates a Service. All dates are interpreted in loc.
-func NewService(store Store, loc *time.Location) *Service {
-	return &Service{store: store, loc: loc, now: time.Now}
+// bootstrapPIN is the ADMIN_PIN used to create the first admin while there
+// are no users; it may be empty once users exist.
+func NewService(store Store, loc *time.Location, pins PINHasher, bootstrapPIN string) *Service {
+	return &Service{store: store, loc: loc, now: time.Now, pins: pins, bootstrapPIN: bootstrapPIN}
 }
 
 // SetClock replaces the clock. Used by tests.
@@ -74,7 +79,10 @@ type CreateInput struct {
 }
 
 // Create validates the input, checks the schedule and saves a new booking.
-func (s *Service) Create(ctx context.Context, in CreateInput) (Booking, error) {
+func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booking, error) {
+	if !actor.Can(PermCreateBooking) {
+		return Booking{}, ErrForbidden
+	}
 	in.CustomerName = strings.TrimSpace(in.CustomerName)
 	in.Phone = strings.TrimSpace(in.Phone)
 	in.Notes = strings.TrimSpace(in.Notes)
@@ -128,83 +136,94 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Booking, error) {
 		TotalPrice:   Price(room.RatePerHour, in.DurationMinutes),
 		CreatedAt:    now,
 		UpdatedAt:    now,
+		CreatedBy:    actor.Username,
 	}
 	if err := s.store.AddBooking(ctx, b); err != nil {
 		return Booking{}, err
 	}
+	s.audit(ctx, actor, ActBookingCreate, b.ID, b.RoomID, fmt.Sprintf("%s %s-%s %s",
+		b.CustomerName, b.Start.Format("02/01 15:04"), b.End.Format("15:04"), rupiah(b.TotalPrice)))
 	return b, nil
 }
 
 // Extend adds minutes to the end of an active booking and updates the price.
-func (s *Service) Extend(ctx context.Context, id string, minutes int) (Booking, error) {
+func (s *Service) Extend(ctx context.Context, actor User, id string, minutes int) (Booking, error) {
 	if minutes <= 0 || minutes%StepMinutes != 0 || minutes > MaxDurationMinutes {
 		return Booking{}, fmt.Errorf("%w: perpanjangan harus kelipatan %d menit", ErrInvalid, StepMinutes)
 	}
-	return s.change(ctx, id, func(b *Booking, all []Booking, now time.Time) error {
+	return s.change(ctx, actor, PermExtend, ActExtend, id, func(b *Booking, all []Booking, now time.Time) (string, error) {
 		if !b.Status.Active() {
-			return ErrWrongState
+			return "", ErrWrongState
 		}
 		newEnd := b.End.Add(time.Duration(minutes) * time.Minute)
 		if b.DurationMinutes()+minutes > MaxDurationMinutes {
-			return fmt.Errorf("%w: durasi maksimal %d jam", ErrInvalid, MaxDurationMinutes/60)
+			return "", fmt.Errorf("%w: durasi maksimal %d jam", ErrInvalid, MaxDurationMinutes/60)
 		}
 		if c, ok := findConflict(all, b.RoomID, b.End, newEnd, b.ID); ok {
-			return conflictError(c)
+			return "", conflictError(c)
 		}
 		b.End = newEnd
 		b.TotalPrice = Price(b.RatePerHour, b.DurationMinutes())
-		return nil
+		return fmt.Sprintf("+%d menit, selesai %s, total %s", minutes, newEnd.Format("15:04"), rupiah(b.TotalPrice)), nil
 	})
 }
 
 // CheckIn marks the guest as arrived. The TV timer starts showing this booking.
-func (s *Service) CheckIn(ctx context.Context, id string) (Booking, error) {
-	return s.change(ctx, id, func(b *Booking, all []Booking, now time.Time) error {
+func (s *Service) CheckIn(ctx context.Context, actor User, id string) (Booking, error) {
+	return s.change(ctx, actor, PermCheckIn, ActCheckIn, id, func(b *Booking, all []Booking, now time.Time) (string, error) {
 		if b.Status != StatusBooked {
-			return ErrWrongState
+			return "", ErrWrongState
 		}
 		if now.Before(b.Start.Add(-EarlyCheckIn)) {
-			return fmt.Errorf("%w: check-in paling cepat %d menit sebelum jam mulai", ErrWrongState, int(EarlyCheckIn/time.Minute))
+			return "", fmt.Errorf("%w: check-in paling cepat %d menit sebelum jam mulai", ErrWrongState, int(EarlyCheckIn/time.Minute))
 		}
 		if !now.Before(b.End) {
-			return fmt.Errorf("%w: waktu booking sudah habis", ErrWrongState)
+			return "", fmt.Errorf("%w: waktu booking sudah habis", ErrWrongState)
 		}
 		for _, o := range all {
 			if o.ID != b.ID && o.RoomID == b.RoomID && o.Status == StatusCheckedIn {
-				return fmt.Errorf("%w: room masih dipakai tamu %s (belum check-out)", ErrConflict, o.CustomerName)
+				return "", fmt.Errorf("%w: room masih dipakai tamu %s (belum check-out)", ErrConflict, o.CustomerName)
 			}
 		}
 		b.Status = StatusCheckedIn
 		b.CheckedInAt = now
-		return nil
+		b.CheckedInBy = actor.Username
+		return b.CustomerName, nil
 	})
 }
 
 // CheckOut finishes a checked-in booking. The TV alarm stops.
-func (s *Service) CheckOut(ctx context.Context, id string) (Booking, error) {
-	return s.change(ctx, id, func(b *Booking, _ []Booking, now time.Time) error {
+func (s *Service) CheckOut(ctx context.Context, actor User, id string) (Booking, error) {
+	return s.change(ctx, actor, PermCheckOut, ActCheckOut, id, func(b *Booking, _ []Booking, now time.Time) (string, error) {
 		if b.Status != StatusCheckedIn {
-			return ErrWrongState
+			return "", ErrWrongState
 		}
 		b.Status = StatusFinished
 		b.CheckedOutAt = now
-		return nil
+		b.CheckedOutBy = actor.Username
+		return fmt.Sprintf("%s, total %s", b.CustomerName, rupiah(b.TotalPrice)), nil
 	})
 }
 
 // Cancel cancels a booking that has not been checked in.
-func (s *Service) Cancel(ctx context.Context, id string) (Booking, error) {
-	return s.change(ctx, id, func(b *Booking, _ []Booking, _ time.Time) error {
+func (s *Service) Cancel(ctx context.Context, actor User, id string) (Booking, error) {
+	return s.change(ctx, actor, PermCancel, ActCancel, id, func(b *Booking, _ []Booking, _ time.Time) (string, error) {
 		if b.Status != StatusBooked {
-			return ErrWrongState
+			return "", ErrWrongState
 		}
 		b.Status = StatusCancelled
-		return nil
+		b.CancelledBy = actor.Username
+		return fmt.Sprintf("%s %s", b.CustomerName, b.Start.Format("02/01 15:04")), nil
 	})
 }
 
-// change loads one booking, applies fn and saves the result.
-func (s *Service) change(ctx context.Context, id string, fn func(b *Booking, all []Booking, now time.Time) error) (Booking, error) {
+// change checks the permission, loads one booking, applies fn, saves the
+// result and writes the audit line. fn returns the audit detail text.
+func (s *Service) change(ctx context.Context, actor User, perm Permission, action, id string,
+	fn func(b *Booking, all []Booking, now time.Time) (string, error)) (Booking, error) {
+	if !actor.Can(perm) {
+		return Booking{}, ErrForbidden
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx = WithFreshRead(ctx)
@@ -219,18 +238,23 @@ func (s *Service) change(ctx context.Context, id string, fn func(b *Booking, all
 	}
 	b := all[i]
 	now := s.Now()
-	if err := fn(&b, all, now); err != nil {
+	detail, err := fn(&b, all, now)
+	if err != nil {
 		return Booking{}, err
 	}
 	b.UpdatedAt = now
 	if err := s.store.UpdateBooking(ctx, b); err != nil {
 		return Booking{}, err
 	}
+	s.audit(ctx, actor, action, b.ID, b.RoomID, detail)
 	return b, nil
 }
 
 // DayBookings returns every booking that overlaps the given day, ordered by start.
-func (s *Service) DayBookings(ctx context.Context, day time.Time) ([]Booking, error) {
+func (s *Service) DayBookings(ctx context.Context, actor User, day time.Time) ([]Booking, error) {
+	if !actor.Can(PermViewSchedule) {
+		return nil, ErrForbidden
+	}
 	all, err := s.store.ListBookings(ctx)
 	if err != nil {
 		return nil, err
@@ -269,7 +293,10 @@ type DailyReport struct {
 }
 
 // Report builds the daily report for the given day.
-func (s *Service) Report(ctx context.Context, day time.Time) (DailyReport, error) {
+func (s *Service) Report(ctx context.Context, actor User, day time.Time) (DailyReport, error) {
+	if !actor.Can(PermViewReport) {
+		return DailyReport{}, ErrForbidden
+	}
 	rooms, err := s.Rooms(ctx)
 	if err != nil {
 		return DailyReport{}, err

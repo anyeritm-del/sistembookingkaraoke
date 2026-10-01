@@ -12,11 +12,15 @@
   <!-- Login -->
   <section id="login-view" class="login" hidden>
     <h1>Booking Karaoke</h1>
-    <p>Masuk sebagai staf</p>
+    <p>Masuk dengan akun Anda</p>
     <form id="login-form">
       <div class="field">
-        <label for="pin">PIN staf</label>
-        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required minlength="4">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="pin">PIN</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required minlength="6">
       </div>
       <p id="login-error" class="msg error" role="alert" hidden></p>
       <button class="btn primary" type="submit">Masuk</button>
@@ -31,9 +35,14 @@
       <input id="date" type="date" aria-label="Tanggal">
       <div class="tabs" role="tablist">
         <button class="btn" role="tab" id="tab-schedule" aria-selected="true" aria-controls="schedule-view">Jadwal</button>
-        <button class="btn" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view">Laporan</button>
+        <button class="btn" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view" data-perm="report.view">Laporan</button>
+        <button class="btn" role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view" data-perm="activity.view">Aktivitas</button>
+        <button class="btn" role="tab" id="tab-rooms" aria-selected="false" aria-controls="rooms-view" data-perm="rooms.manage">Room</button>
+        <button class="btn" role="tab" id="tab-users" aria-selected="false" aria-controls="users-view" data-perm="users.manage">User</button>
       </div>
-      <button class="btn primary" id="new-booking">+ Booking baru</button>
+      <button class="btn primary" id="new-booking" data-perm="booking.create">+ Booking baru</button>
+      <span class="who-am-i" id="who-am-i"></span>
+      <button class="btn" id="change-pin">Ganti PIN</button>
       <button class="btn" id="logout">Keluar</button>
     </header>
 
@@ -57,6 +66,44 @@
             </thead>
             <tbody id="report-rows"></tbody>
             <tfoot><tr id="report-total"></tr></tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section id="activity-view" role="tabpanel" aria-labelledby="tab-activity" hidden>
+        <div class="report-head"><h2 id="activity-title">Aktivitas</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Jam</th><th>User</th><th>Aksi</th><th>Room</th><th>Booking</th><th>Detail</th></tr></thead>
+            <tbody id="activity-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="rooms-view" role="tabpanel" aria-labelledby="tab-rooms" hidden>
+        <div class="report-head">
+          <h2>Kelola room</h2>
+          <button class="btn primary" id="new-room">+ Room baru</button>
+        </div>
+        <p class="hint-text">Tarif baru hanya berlaku untuk booking baru. Kode room tidak bisa diubah karena dipakai TV dan riwayat booking; nonaktifkan room yang tidak dipakai.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Kode</th><th>Nama</th><th class="num">Tarif / jam</th><th>Status</th><th></th></tr></thead>
+            <tbody id="room-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="users-view" role="tabpanel" aria-labelledby="tab-users" hidden>
+        <div class="report-head">
+          <h2>Kelola user</h2>
+          <button class="btn primary" id="new-user">+ User baru</button>
+        </div>
+        <p class="hint-text"><b>Staff</b>: booking, check-in, perpanjang, check-out. <b>Supervisor</b>: + batal booking, laporan, aktivitas. <b>Admin</b>: + kelola room dan user.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Username</th><th>Nama</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody id="user-rows"></tbody>
           </table>
         </div>
       </section>
@@ -98,6 +145,92 @@
       <div class="buttons">
         <button class="btn" type="button" id="booking-cancel">Batal</button>
         <button class="btn primary" type="submit" id="booking-submit">Simpan booking</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Room create / edit -->
+  <dialog id="room-dialog" aria-labelledby="room-dialog-title">
+    <form id="room-form" method="dialog">
+      <h2 id="room-dialog-title">Room</h2>
+      <div class="field">
+        <label for="r-id">Kode room</label>
+        <input id="r-id" name="id" required maxlength="16" pattern="[A-Za-z0-9_\-]{1,16}" autocomplete="off" autocapitalize="characters" aria-describedby="r-id-hint">
+        <span class="hint" id="r-id-hint">Contoh R05 atau VIP2. Dipakai di alamat TV; tidak bisa diubah.</span>
+      </div>
+      <div class="field">
+        <label for="r-name">Nama room</label>
+        <input id="r-name" name="name" required maxlength="60" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="r-rate">Tarif per jam (Rp)</label>
+        <input id="r-rate" name="rate_per_hour" required inputmode="numeric" pattern="[0-9]{1,9}" autocomplete="off">
+      </div>
+      <label class="check"><input type="checkbox" id="r-active" name="active" checked> Aktif (bisa di-booking)</label>
+      <p id="room-error" class="msg error" role="alert" hidden></p>
+      <div class="buttons">
+        <button class="btn" type="button" data-close>Batal</button>
+        <button class="btn primary" type="submit">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- User create / edit -->
+  <dialog id="user-dialog" aria-labelledby="user-dialog-title">
+    <form id="user-form" method="dialog">
+      <h2 id="user-dialog-title">User</h2>
+      <div class="field">
+        <label for="u-username">Username</label>
+        <input id="u-username" name="username" required minlength="3" maxlength="32" pattern="[a-z0-9._\-]{3,32}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="u-username-hint">
+        <span class="hint" id="u-username-hint">Huruf kecil, angka, titik atau minus. Tidak bisa diubah.</span>
+      </div>
+      <div class="field">
+        <label for="u-name">Nama lengkap</label>
+        <input id="u-name" name="name" required maxlength="60" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="u-role">Role</label>
+        <select id="u-role" name="role" required>
+          <option value="staff">Staff</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="field" id="u-pin-field">
+        <label for="u-pin">PIN awal</label>
+        <input id="u-pin" name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="[0-9]{6,12}" autocomplete="new-password" aria-describedby="u-pin-hint">
+        <span class="hint" id="u-pin-hint">6-12 angka, bukan angka sama/berurutan. Minta user mengganti setelah login pertama.</span>
+      </div>
+      <label class="check" id="u-active-field"><input type="checkbox" id="u-active" name="active" checked> Aktif (bisa login)</label>
+      <p id="user-error" class="msg error" role="alert" hidden></p>
+      <div class="buttons">
+        <button class="btn" type="button" data-close>Batal</button>
+        <button class="btn primary" type="submit">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Change own PIN / reset another user's PIN -->
+  <dialog id="pin-dialog" aria-labelledby="pin-dialog-title">
+    <form id="pin-form" method="dialog">
+      <h2 id="pin-dialog-title">Ganti PIN</h2>
+      <div class="field" id="p-old-field">
+        <label for="p-old">PIN lama</label>
+        <input id="p-old" name="old_pin" type="password" inputmode="numeric" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="p-new">PIN baru</label>
+        <input id="p-new" name="new_pin" type="password" inputmode="numeric" required minlength="6" maxlength="12" pattern="[0-9]{6,12}" autocomplete="new-password" aria-describedby="p-new-hint">
+        <span class="hint" id="p-new-hint">6-12 angka, bukan angka sama/berurutan.</span>
+      </div>
+      <div class="field">
+        <label for="p-confirm">Ulangi PIN baru</label>
+        <input id="p-confirm" type="password" inputmode="numeric" required autocomplete="new-password">
+      </div>
+      <p id="pin-error" class="msg error" role="alert" hidden></p>
+      <div class="buttons">
+        <button class="btn" type="button" data-close>Batal</button>
+        <button class="btn primary" type="submit">Simpan PIN</button>
       </div>
     </form>
   </dialog>

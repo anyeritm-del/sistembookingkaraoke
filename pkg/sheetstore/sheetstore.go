@@ -1,12 +1,16 @@
-// Package sheetstore stores rooms and bookings in a Google Spreadsheet.
+// Package sheetstore stores rooms, bookings, users and the audit log in a
+// Google Spreadsheet.
 //
-// The spreadsheet has two tabs. Row 1 of each tab is the header; columns are
-// found by header name, so staff may reorder columns but must not rename them.
+// Row 1 of each tab is the header. Columns are found by header name, so
+// columns may be reordered or added, but known headers must not be renamed.
 //
 //	Rooms:    id | name | rate_per_hour | active
 //	Bookings: id | room_id | customer_name | phone | start | end | duration_minutes |
 //	          status | rate_per_hour | total_price | notes | checked_in_at |
-//	          checked_out_at | created_at | updated_at
+//	          checked_out_at | created_at | updated_at | created_by |
+//	          checked_in_by | checked_out_by | cancelled_by
+//	Users:    username | name | role | pin_hash | active | created_at | updated_at
+//	Activity: time | username | action | booking_id | room_id | detail
 //
 // Times are written as text in the business time zone ("2006-01-02 15:04"),
 // so the sheet is easy to read and does not depend on the sheet's locale.
@@ -15,6 +19,7 @@ package sheetstore
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,17 +35,34 @@ import (
 const (
 	RoomsSheet    = "Rooms"
 	BookingsSheet = "Bookings"
+	UsersSheet    = "Users"
+	ActivitySheet = "Activity"
 )
 
-// Column headers, in the order used when a tab is created.
+// Column headers, in the order used when a tab is created. New columns are
+// added at the end, so existing sheets can be upgraded in place.
 var (
 	RoomColumns    = []string{"id", "name", "rate_per_hour", "active"}
 	BookingColumns = []string{
 		"id", "room_id", "customer_name", "phone", "start", "end", "duration_minutes",
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at",
 		"checked_out_at", "created_at", "updated_at",
+		"created_by", "checked_in_by", "checked_out_by", "cancelled_by",
 	}
+	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
+	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
 )
+
+// Schema lists every tab with its columns.
+var Schema = []struct {
+	Name    string
+	Columns []string
+}{
+	{RoomsSheet, RoomColumns},
+	{BookingsSheet, BookingColumns},
+	{UsersSheet, UserColumns},
+	{ActivitySheet, ActivityColumns},
+}
 
 const (
 	minuteLayout = "2006-01-02 15:04"
@@ -59,15 +81,24 @@ type Store struct {
 	mu       sync.Mutex
 	cachedAt time.Time
 	snap     *snapshot
+	// headers outlive the snapshot cache, so appends (bookings, audit lines)
+	// do not need an extra read. They are refreshed on every load.
+	headers map[string]map[string]int
 }
 
-// snapshot is one read of both tabs.
+// table is one tab as read: header positions and where each row is.
+type table struct {
+	cols  map[string]int   // header name -> column index
+	rowOf map[string]int   // key -> 1-based sheet row
+	raw   map[string][]any // key -> cells as read
+}
+
+// snapshot is one read of the Rooms, Bookings and Users tabs.
 type snapshot struct {
-	rooms       []booking.Room
-	bookings    []booking.Booking
-	bookingCols map[string]int   // header name -> column index
-	bookingRow  map[string]int   // booking ID -> 1-based sheet row
-	bookingRaw  map[string][]any // booking ID -> cells as read
+	rooms    []booking.Room
+	bookings []booking.Booking
+	users    []booking.User
+	tabs     map[string]*table
 }
 
 // New connects to the spreadsheet with a service account key (JSON).
@@ -83,12 +114,14 @@ func New(ctx context.Context, credentialsJSON []byte, spreadsheetID string, loc 
 	return &Store{api: api, spreadsheetID: spreadsheetID, loc: loc}, nil
 }
 
+// ---------- booking.Store ----------
+
 func (s *Store) ListRooms(ctx context.Context) ([]booking.Room, error) {
 	snap, err := s.load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return append([]booking.Room(nil), snap.rooms...), nil
+	return slices.Clone(snap.rooms), nil
 }
 
 func (s *Store) ListBookings(ctx context.Context) ([]booking.Booking, error) {
@@ -96,77 +129,217 @@ func (s *Store) ListBookings(ctx context.Context) ([]booking.Booking, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append([]booking.Booking(nil), snap.bookings...), nil
+	return slices.Clone(snap.bookings), nil
+}
+
+func (s *Store) ListUsers(ctx context.Context) ([]booking.User, error) {
+	snap, err := s.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(snap.users), nil
 }
 
 func (s *Store) AddBooking(ctx context.Context, b booking.Booking) error {
-	snap, err := s.load(booking.WithFreshRead(ctx))
+	return s.appendRow(ctx, BookingsSheet, s.bookingValues(b))
+}
+
+func (s *Store) UpdateBooking(ctx context.Context, b booking.Booking) error {
+	return s.updateRow(ctx, BookingsSheet, b.ID, s.bookingValues(b))
+}
+
+func (s *Store) AddRoom(ctx context.Context, r booking.Room) error {
+	return s.appendRow(ctx, RoomsSheet, roomValues(r))
+}
+
+func (s *Store) UpdateRoom(ctx context.Context, r booking.Room) error {
+	return s.updateRow(ctx, RoomsSheet, r.ID, roomValues(r))
+}
+
+func (s *Store) AddUser(ctx context.Context, u booking.User) error {
+	return s.appendRow(ctx, UsersSheet, s.userValues(u))
+}
+
+func (s *Store) UpdateUser(ctx context.Context, u booking.User) error {
+	return s.updateRow(ctx, UsersSheet, u.Username, s.userValues(u))
+}
+
+func (s *Store) AddActivity(ctx context.Context, a booking.Activity) error {
+	return s.appendRow(ctx, ActivitySheet, map[string]any{
+		"time":       s.formatTime(a.Time, secondLayout),
+		"username":   a.Username,
+		"action":     a.Action,
+		"booking_id": a.BookingID,
+		"room_id":    a.RoomID,
+		"detail":     a.Detail,
+	})
+}
+
+// ListActivity reads the whole Activity tab (not cached; it is only read
+// when someone opens the activity view) and filters by time.
+func (s *Store) ListActivity(ctx context.Context, from, to time.Time) ([]booking.Activity, error) {
+	resp, err := s.api.Spreadsheets.Values.Get(s.spreadsheetID, ActivitySheet).
+		ValueRenderOption("UNFORMATTED_VALUE").DateTimeRenderOption("FORMATTED_STRING").
+		Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("sheets read activity: %w", err)
+	}
+	c, err := headerIndex(ActivitySheet, resp.Values, ActivityColumns)
+	if err != nil {
+		return nil, err
+	}
+	var out []booking.Activity
+	for _, row := range resp.Values[1:] {
+		t, err := s.parseTime(cellString(row, c["time"]))
+		if err != nil || t.IsZero() || t.Before(from) || !t.Before(to) {
+			continue // skip broken or out-of-range lines instead of failing the view
+		}
+		out = append(out, booking.Activity{
+			Time:      t,
+			Username:  cellString(row, c["username"]),
+			Action:    cellString(row, c["action"]),
+			BookingID: cellString(row, c["booking_id"]),
+			RoomID:    cellString(row, c["room_id"]),
+			Detail:    cellString(row, c["detail"]),
+		})
+	}
+	return out, nil
+}
+
+// ---------- Generic row writes ----------
+
+func (s *Store) appendRow(ctx context.Context, sheet string, values map[string]any) error {
+	cols, err := s.header(ctx, sheet)
 	if err != nil {
 		return err
 	}
-	row := s.bookingRow(b, snap.bookingCols, nil)
-	_, err = s.api.Spreadsheets.Values.Append(s.spreadsheetID, BookingsSheet+"!A1",
+	row := buildRow(values, cols, nil)
+	_, err = s.api.Spreadsheets.Values.Append(s.spreadsheetID, sheet+"!A1",
 		&sheets.ValueRange{Values: [][]any{row}}).
 		ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Context(ctx).Do()
-	s.invalidate()
+	if sheet != ActivitySheet {
+		s.invalidate()
+	}
 	if err != nil {
-		return fmt.Errorf("sheets append booking: %w", err)
+		return fmt.Errorf("sheets append %s: %w", sheet, err)
 	}
 	return nil
 }
 
-func (s *Store) UpdateBooking(ctx context.Context, b booking.Booking) error {
+func (s *Store) updateRow(ctx context.Context, sheet, key string, values map[string]any) error {
 	// Read again so a row added or deleted by hand does not shift the target row.
 	snap, err := s.load(booking.WithFreshRead(ctx))
 	if err != nil {
 		return err
 	}
-	rowNum, ok := snap.bookingRow[b.ID]
+	t := snap.tabs[sheet]
+	k := rowKey(key)
+	rowNum, ok := t.rowOf[k]
 	if !ok {
 		return booking.ErrNotFound
 	}
-	row := s.bookingRow(b, snap.bookingCols, snap.bookingRaw[b.ID])
-	rng := fmt.Sprintf("%s!A%d:%s%d", BookingsSheet, rowNum, columnLetter(len(row)-1), rowNum)
+	row := buildRow(values, t.cols, t.raw[k])
+	rng := fmt.Sprintf("%s!A%d:%s%d", sheet, rowNum, columnLetter(len(row)-1), rowNum)
 	_, err = s.api.Spreadsheets.Values.Update(s.spreadsheetID, rng,
 		&sheets.ValueRange{Values: [][]any{row}}).
 		ValueInputOption("RAW").Context(ctx).Do()
 	s.invalidate()
 	if err != nil {
-		return fmt.Errorf("sheets update booking: %w", err)
+		return fmt.Errorf("sheets update %s: %w", sheet, err)
 	}
 	return nil
 }
 
-// TabNames returns the tab titles in the spreadsheet. It only reads.
-func (s *Store) TabNames(ctx context.Context) ([]string, error) {
-	ss, err := s.api.Spreadsheets.Get(s.spreadsheetID).Fields("properties.title,sheets.properties.title").Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("read spreadsheet: %w", err)
+// header returns the column positions of a tab, from the last load.
+func (s *Store) header(ctx context.Context, sheet string) (map[string]int, error) {
+	s.mu.Lock()
+	cols := s.headers[sheet]
+	s.mu.Unlock()
+	if cols != nil {
+		return cols, nil
 	}
-	names := make([]string, 0, len(ss.Sheets))
-	for _, sh := range ss.Sheets {
-		names = append(names, sh.Properties.Title)
+	if _, err := s.load(booking.WithFreshRead(ctx)); err != nil {
+		return nil, err
 	}
-	return names, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.headers[sheet], nil
 }
 
-// EnsureSchema creates missing tabs and header rows. If the Rooms tab is new
-// and seed is not empty, the seed rooms are added. Existing data is never changed.
-func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room) error {
-	ss, err := s.api.Spreadsheets.Get(s.spreadsheetID).Fields("sheets.properties.title").Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("read spreadsheet: %w", err)
+// buildRow puts values in the sheet's column order. Cells in columns this
+// program does not know keep their existing value.
+func buildRow(values map[string]any, cols map[string]int, existing []any) []any {
+	width := len(existing)
+	for _, i := range cols {
+		width = max(width, i+1)
 	}
-	have := map[string]bool{}
-	for _, sh := range ss.Sheets {
-		have[sh.Properties.Title] = true
+	row := make([]any, width)
+	for i := range row {
+		row[i] = ""
+		if i < len(existing) && existing[i] != nil {
+			row[i] = existing[i]
+		}
 	}
+	for name, i := range cols {
+		if v, ok := values[name]; ok {
+			row[i] = v
+		}
+	}
+	return row
+}
 
+// rowKey normalises IDs and usernames so lookups ignore case and spaces.
+func rowKey(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// ---------- Schema setup ----------
+
+// SchemaStatus describes what EnsureSchema would change.
+type SchemaStatus struct {
+	Tab            string
+	Exists         bool
+	MissingColumns []string
+}
+
+// CheckSchema reports missing tabs and columns. It only reads.
+func (s *Store) CheckSchema(ctx context.Context) ([]SchemaStatus, error) {
+	have, err := s.tabTitles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []SchemaStatus
+	for _, t := range Schema {
+		st := SchemaStatus{Tab: t.Name, Exists: slices.Contains(have, t.Name)}
+		if !st.Exists {
+			st.MissingColumns = t.Columns
+		} else {
+			hdr, err := s.headerRow(ctx, t.Name)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range t.Columns {
+				if !slices.Contains(hdr, c) {
+					st.MissingColumns = append(st.MissingColumns, c)
+				}
+			}
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}
+
+// EnsureSchema creates missing tabs and adds missing header columns at the
+// end of existing tabs. If the Rooms tab is new and seed is not empty, the
+// seed rooms are added. Existing data is never changed.
+func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room) error {
+	status, err := s.CheckSchema(ctx)
+	if err != nil {
+		return err
+	}
 	var add []*sheets.Request
-	for _, name := range []string{RoomsSheet, BookingsSheet} {
-		if !have[name] {
+	for _, st := range status {
+		if !st.Exists {
 			add = append(add, &sheets.Request{AddSheet: &sheets.AddSheetRequest{
-				Properties: &sheets.SheetProperties{Title: name},
+				Properties: &sheets.SheetProperties{Title: st.Tab},
 			}})
 		}
 	}
@@ -177,32 +350,67 @@ func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room) error {
 		}
 	}
 
-	if !have[BookingsSheet] {
-		if err := s.writeRows(ctx, BookingsSheet, [][]any{toAny(BookingColumns)}); err != nil {
-			return err
+	for _, st := range status {
+		if len(st.MissingColumns) == 0 {
+			continue
 		}
-	}
-	if !have[RoomsSheet] {
-		rows := [][]any{toAny(RoomColumns)}
-		for _, r := range seed {
-			rows = append(rows, []any{r.ID, r.Name, r.RatePerHour, r.Active})
+		start := 0
+		if st.Exists {
+			hdr, err := s.headerRow(ctx, st.Tab)
+			if err != nil {
+				return err
+			}
+			start = len(hdr)
 		}
-		if err := s.writeRows(ctx, RoomsSheet, rows); err != nil {
-			return err
+		rng := fmt.Sprintf("%s!%s1", st.Tab, columnLetter(start))
+		rows := [][]any{toAny(st.MissingColumns)}
+		if st.Tab == RoomsSheet && !st.Exists {
+			for _, r := range seed {
+				rows = append(rows, []any{r.ID, r.Name, r.RatePerHour, r.Active})
+			}
+		}
+		if _, err := s.api.Spreadsheets.Values.Update(s.spreadsheetID, rng,
+			&sheets.ValueRange{Values: rows}).ValueInputOption("RAW").Context(ctx).Do(); err != nil {
+			return fmt.Errorf("write %s header: %w", st.Tab, err)
 		}
 	}
 	s.invalidate()
+	s.mu.Lock()
+	s.headers = nil
+	s.mu.Unlock()
 	return nil
 }
 
-func (s *Store) writeRows(ctx context.Context, sheet string, rows [][]any) error {
-	_, err := s.api.Spreadsheets.Values.Update(s.spreadsheetID, sheet+"!A1",
-		&sheets.ValueRange{Values: rows}).ValueInputOption("RAW").Context(ctx).Do()
+func (s *Store) tabTitles(ctx context.Context) ([]string, error) {
+	ss, err := s.api.Spreadsheets.Get(s.spreadsheetID).Fields("sheets.properties.title").Context(ctx).Do()
 	if err != nil {
-		return fmt.Errorf("write %s: %w", sheet, err)
+		return nil, fmt.Errorf("read spreadsheet: %w", err)
 	}
-	return nil
+	var names []string
+	for _, sh := range ss.Sheets {
+		names = append(names, sh.Properties.Title)
+	}
+	return names, nil
 }
+
+// TabNames returns the tab titles in the spreadsheet. It only reads.
+func (s *Store) TabNames(ctx context.Context) ([]string, error) { return s.tabTitles(ctx) }
+
+func (s *Store) headerRow(ctx context.Context, tab string) ([]string, error) {
+	resp, err := s.api.Spreadsheets.Values.Get(s.spreadsheetID, tab+"!1:1").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read %s header: %w", tab, err)
+	}
+	var out []string
+	if len(resp.Values) > 0 {
+		for _, h := range resp.Values[0] {
+			out = append(out, strings.ToLower(strings.TrimSpace(fmt.Sprint(h))))
+		}
+	}
+	return out, nil
+}
+
+// ---------- Reading ----------
 
 func (s *Store) invalidate() {
 	s.mu.Lock()
@@ -210,7 +418,8 @@ func (s *Store) invalidate() {
 	s.mu.Unlock()
 }
 
-// load reads both tabs in one API call, or returns the cached snapshot.
+// load reads Rooms, Bookings, Users and the Activity header in one API call,
+// or returns the cached snapshot.
 func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -219,65 +428,110 @@ func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	}
 
 	resp, err := s.api.Spreadsheets.Values.BatchGet(s.spreadsheetID).
-		Ranges(RoomsSheet, BookingsSheet).
+		Ranges(RoomsSheet, BookingsSheet, UsersSheet, ActivitySheet+"!1:1").
 		ValueRenderOption("UNFORMATTED_VALUE").
 		DateTimeRenderOption("FORMATTED_STRING").
 		Context(ctx).Do()
 	if err != nil {
-		return nil, fmt.Errorf("sheets read: %w", err)
+		return nil, fmt.Errorf("sheets read: %w (jalankan setup sheet jika tab baru belum ada)", err)
 	}
-	if len(resp.ValueRanges) != 2 {
-		return nil, fmt.Errorf("sheets read: expected 2 ranges, got %d", len(resp.ValueRanges))
+	if len(resp.ValueRanges) != 4 {
+		return nil, fmt.Errorf("sheets read: expected 4 ranges, got %d", len(resp.ValueRanges))
 	}
-	snap, err := s.parse(resp.ValueRanges[0].Values, resp.ValueRanges[1].Values)
+	v := func(i int) [][]any { return resp.ValueRanges[i].Values }
+	snap, err := s.parse(v(0), v(1), v(2), v(3))
 	if err != nil {
 		return nil, err
 	}
 	s.snap, s.cachedAt = snap, time.Now()
+	s.headers = map[string]map[string]int{}
+	for name, t := range snap.tabs {
+		s.headers[name] = t.cols
+	}
 	return snap, nil
 }
 
-func (s *Store) parse(roomRows, bookingRows [][]any) (*snapshot, error) {
-	snap := &snapshot{bookingRow: map[string]int{}, bookingRaw: map[string][]any{}}
+func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader [][]any) (*snapshot, error) {
+	snap := &snapshot{tabs: map[string]*table{}}
+	newTable := func(name string, rows [][]any, want []string) (*table, error) {
+		cols, err := headerIndex(name, rows, want)
+		if err != nil {
+			return nil, err
+		}
+		t := &table{cols: cols, rowOf: map[string]int{}, raw: map[string][]any{}}
+		snap.tabs[name] = t
+		return t, nil
+	}
+	remember := func(t *table, key string, i int, row []any) {
+		k := rowKey(key)
+		t.rowOf[k] = i + 2 // +1 for header, +1 for 1-based rows
+		t.raw[k] = row
+	}
 
-	rc, err := headerIndex(RoomsSheet, roomRows, RoomColumns)
+	rt, err := newTable(RoomsSheet, roomRows, RoomColumns)
 	if err != nil {
 		return nil, err
 	}
-	for _, row := range roomRows[1:] {
-		id := cellString(row, rc["id"])
+	for i, row := range roomRows[1:] {
+		id := cellString(row, rt.cols["id"])
 		if id == "" {
 			continue
 		}
-		rate, err := cellInt(row, rc["rate_per_hour"])
+		rate, err := cellInt(row, rt.cols["rate_per_hour"])
 		if err != nil {
 			return nil, fmt.Errorf("%s room %s: rate_per_hour: %w", RoomsSheet, id, err)
 		}
 		snap.rooms = append(snap.rooms, booking.Room{
 			ID:          id,
-			Name:        cellString(row, rc["name"]),
+			Name:        cellString(row, rt.cols["name"]),
 			RatePerHour: rate,
-			Active:      cellBool(row, rc["active"]),
+			Active:      cellBool(row, rt.cols["active"]),
 		})
+		remember(rt, id, i, row)
 	}
 
-	bc, err := headerIndex(BookingsSheet, bookingRows, BookingColumns)
+	bt, err := newTable(BookingsSheet, bookingRows, BookingColumns)
 	if err != nil {
 		return nil, err
 	}
-	snap.bookingCols = bc
 	for i, row := range bookingRows[1:] {
-		id := cellString(row, bc["id"])
+		id := cellString(row, bt.cols["id"])
 		if id == "" {
 			continue
 		}
-		b, err := s.parseBooking(row, bc)
+		b, err := s.parseBooking(row, bt.cols)
 		if err != nil {
 			return nil, fmt.Errorf("%s row %d (%s): %w", BookingsSheet, i+2, id, err)
 		}
 		snap.bookings = append(snap.bookings, b)
-		snap.bookingRow[id] = i + 2 // +1 for header, +1 for 1-based rows
-		snap.bookingRaw[id] = row
+		remember(bt, id, i, row)
+	}
+
+	ut, err := newTable(UsersSheet, userRows, UserColumns)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range userRows[1:] {
+		name := rowKey(cellString(row, ut.cols["username"]))
+		if name == "" {
+			continue
+		}
+		u := booking.User{
+			Username: name,
+			Name:     cellString(row, ut.cols["name"]),
+			Role:     booking.Role(strings.ToLower(cellString(row, ut.cols["role"]))),
+			PINHash:  cellString(row, ut.cols["pin_hash"]),
+			Active:   cellBool(row, ut.cols["active"]),
+		}
+		// Bad timestamps in a user row should not lock everyone out.
+		u.CreatedAt, _ = s.parseTime(cellString(row, ut.cols["created_at"]))
+		u.UpdatedAt, _ = s.parseTime(cellString(row, ut.cols["updated_at"]))
+		snap.users = append(snap.users, u)
+		remember(ut, name, i, row)
+	}
+
+	if _, err := newTable(ActivitySheet, activityHeader, ActivityColumns); err != nil {
+		return nil, err
 	}
 	return snap, nil
 }
@@ -290,6 +544,10 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 		Phone:        cellString(row, c["phone"]),
 		Status:       booking.Status(cellString(row, c["status"])),
 		Notes:        cellString(row, c["notes"]),
+		CreatedBy:    cellString(row, c["created_by"]),
+		CheckedInBy:  cellString(row, c["checked_in_by"]),
+		CheckedOutBy: cellString(row, c["checked_out_by"]),
+		CancelledBy:  cellString(row, c["cancelled_by"]),
 	}
 	var err error
 	if b.Start, err = s.parseTime(cellString(row, c["start"])); err != nil || b.Start.IsZero() {
@@ -315,10 +573,10 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 	return b, nil
 }
 
-// bookingRow converts a booking to a row in the sheet's column order.
-// Cells in columns this program does not know keep their existing value.
-func (s *Store) bookingRow(b booking.Booking, cols map[string]int, existing []any) []any {
-	values := map[string]any{
+// ---------- Values per tab ----------
+
+func (s *Store) bookingValues(b booking.Booking) map[string]any {
+	return map[string]any{
 		"id":               b.ID,
 		"room_id":          b.RoomID,
 		"customer_name":    b.CustomerName,
@@ -334,25 +592,30 @@ func (s *Store) bookingRow(b booking.Booking, cols map[string]int, existing []an
 		"checked_out_at":   s.formatTime(b.CheckedOutAt, secondLayout),
 		"created_at":       s.formatTime(b.CreatedAt, secondLayout),
 		"updated_at":       s.formatTime(b.UpdatedAt, secondLayout),
+		"created_by":       b.CreatedBy,
+		"checked_in_by":    b.CheckedInBy,
+		"checked_out_by":   b.CheckedOutBy,
+		"cancelled_by":     b.CancelledBy,
 	}
-	width := len(existing)
-	for _, i := range cols {
-		width = max(width, i+1)
-	}
-	row := make([]any, width)
-	for i := range row {
-		row[i] = ""
-		if i < len(existing) && existing[i] != nil {
-			row[i] = existing[i]
-		}
-	}
-	for name, i := range cols {
-		if v, ok := values[name]; ok {
-			row[i] = v
-		}
-	}
-	return row
 }
+
+func roomValues(r booking.Room) map[string]any {
+	return map[string]any{"id": r.ID, "name": r.Name, "rate_per_hour": r.RatePerHour, "active": r.Active}
+}
+
+func (s *Store) userValues(u booking.User) map[string]any {
+	return map[string]any{
+		"username":   u.Username,
+		"name":       u.Name,
+		"role":       string(u.Role),
+		"pin_hash":   u.PINHash,
+		"active":     u.Active,
+		"created_at": s.formatTime(u.CreatedAt, secondLayout),
+		"updated_at": s.formatTime(u.UpdatedAt, secondLayout),
+	}
+}
+
+// ---------- Cell helpers ----------
 
 func (s *Store) formatTime(t time.Time, layout string) string {
 	if t.IsZero() {
@@ -391,7 +654,7 @@ func headerIndex(sheet string, rows [][]any, want []string) (map[string]int, err
 		}
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("tab %s: kolom hilang: %s", sheet, strings.Join(missing, ", "))
+		return nil, fmt.Errorf("tab %s: kolom hilang: %s (jalankan setup sheet)", sheet, strings.Join(missing, ", "))
 	}
 	return idx, nil
 }

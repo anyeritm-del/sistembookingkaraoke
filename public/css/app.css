@@ -87,6 +87,13 @@ input:user-invalid { border-color: var(--danger); }
 .topbar .clock { font-variant-numeric: tabular-nums; color: var(--muted); }
 .topbar input[type="date"] { width: auto; }
 .tabs { display: flex; gap: .25rem; }
+.tabs { flex-wrap: wrap; }
+.who-am-i { color: var(--muted); font-size: .9rem; }
+.hint-text { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
+.check { display: flex; align-items: center; gap: .5rem; margin-block-end: 1rem; min-height: 44px; }
+.check input { width: 1.25rem; min-height: 0; accent-color: var(--accent); }
+td .actions { display: flex; gap: .35rem; justify-content: flex-end; }
+td.wrap { white-space: normal; min-width: 14rem; overflow-wrap: anywhere; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 

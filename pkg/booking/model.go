@@ -51,6 +51,11 @@ type Booking struct {
 	CheckedOutAt time.Time `json:"checked_out_at"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// Usernames of who did each step, for accountability.
+	CreatedBy    string `json:"created_by"`
+	CheckedInBy  string `json:"checked_in_by"`
+	CheckedOutBy string `json:"checked_out_by"`
+	CancelledBy  string `json:"cancelled_by"`
 }
 
 // DurationMinutes is the booked length in minutes.
@@ -71,6 +76,19 @@ type Store interface {
 	// UpdateBooking replaces the booking with the same ID.
 	// It returns ErrNotFound if the ID does not exist.
 	UpdateBooking(ctx context.Context, b Booking) error
+
+	AddRoom(ctx context.Context, r Room) error
+	// UpdateRoom replaces the room with the same ID, or returns ErrNotFound.
+	UpdateRoom(ctx context.Context, r Room) error
+
+	ListUsers(ctx context.Context) ([]User, error)
+	AddUser(ctx context.Context, u User) error
+	// UpdateUser replaces the user with the same username, or returns ErrNotFound.
+	UpdateUser(ctx context.Context, u User) error
+
+	AddActivity(ctx context.Context, a Activity) error
+	// ListActivity returns audit lines with from <= Time < to.
+	ListActivity(ctx context.Context, from, to time.Time) ([]Activity, error)
 }
 
 type freshReadKey struct{}
@@ -93,4 +111,5 @@ var (
 	ErrConflict   = errors.New("jadwal bentrok dengan booking lain")
 	ErrInvalid    = errors.New("data tidak valid")
 	ErrWrongState = errors.New("status booking tidak sesuai untuk aksi ini")
+	ErrForbidden  = errors.New("anda tidak punya akses untuk aksi ini")
 )

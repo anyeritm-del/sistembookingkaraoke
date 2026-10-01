@@ -23,6 +23,9 @@ type Server struct {
 	mux   *http.ServeMux
 }
 
+// userHandler is a handler for a logged-in user.
+type userHandler func(w http.ResponseWriter, r *http.Request, u booking.User)
+
 // New builds the API handler.
 func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s := &Server{svc: svc, auth: a, tvKey: tvKey, mux: http.NewServeMux()}
@@ -33,14 +36,24 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.mux.HandleFunc("GET /api/me", s.me)
 	s.mux.HandleFunc("GET /api/tv", s.tv)
 
-	s.mux.Handle("GET /api/rooms", s.staff(s.rooms))
-	s.mux.Handle("GET /api/bookings", s.staff(s.dayBookings))
-	s.mux.Handle("POST /api/bookings", s.staff(s.createBooking))
-	s.mux.Handle("POST /api/bookings/{id}/extend", s.staff(s.extend))
-	s.mux.Handle("POST /api/bookings/{id}/checkin", s.staff(s.action(s.svc.CheckIn)))
-	s.mux.Handle("POST /api/bookings/{id}/checkout", s.staff(s.action(s.svc.CheckOut)))
-	s.mux.Handle("POST /api/bookings/{id}/cancel", s.staff(s.action(s.svc.Cancel)))
-	s.mux.Handle("GET /api/report", s.staff(s.report))
+	// Every route below needs a login. The service checks the permission
+	// again, so a missing check here cannot open access.
+	s.route("POST /api/me/pin", s.changeOwnPIN)
+	s.route("GET /api/rooms", s.rooms)
+	s.route("POST /api/rooms", s.createRoom)
+	s.route("PUT /api/rooms/{id}", s.updateRoom)
+	s.route("GET /api/bookings", s.dayBookings)
+	s.route("POST /api/bookings", s.createBooking)
+	s.route("POST /api/bookings/{id}/extend", s.extend)
+	s.route("POST /api/bookings/{id}/checkin", s.action(s.svc.CheckIn))
+	s.route("POST /api/bookings/{id}/checkout", s.action(s.svc.CheckOut))
+	s.route("POST /api/bookings/{id}/cancel", s.action(s.svc.Cancel))
+	s.route("GET /api/report", s.report)
+	s.route("GET /api/activity", s.activity)
+	s.route("GET /api/users", s.users)
+	s.route("POST /api/users", s.createUser)
+	s.route("PUT /api/users/{username}", s.updateUser)
+	s.route("POST /api/users/{username}/pin", s.resetPIN)
 	return s
 }
 
@@ -50,20 +63,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// staff allows only logged-in staff. State-changing requests must be JSON,
-// which together with the SameSite=Strict cookie blocks cross-site forms.
-func (s *Server) staff(h http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.auth.LoggedIn(r) {
-			writeError(w, http.StatusUnauthorized, "silakan login dulu")
+// route registers a handler that needs a logged-in, active user.
+// State-changing requests must be JSON, which together with the
+// SameSite=Strict cookie blocks cross-site form posts.
+func (s *Server) route(pattern string, h userHandler) {
+	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		u, ok := s.currentUser(w, r)
+		if !ok {
 			return
 		}
 		if r.Method != http.MethodGet && !isJSON(r) {
 			writeError(w, http.StatusUnsupportedMediaType, "Content-Type harus application/json")
 			return
 		}
-		h(w, r)
+		h(w, r, u)
 	})
+}
+
+// currentUser loads the session's user from the store, so a role change or
+// deactivation takes effect on the next request.
+func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (booking.User, bool) {
+	name, ok := s.auth.RequestUsername(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "silakan login dulu")
+		return booking.User{}, false
+	}
+	u, err := s.svc.SessionUser(r.Context(), name)
+	if errors.Is(err, booking.ErrBadLogin) {
+		auth.ClearCookie(w)
+		writeError(w, http.StatusUnauthorized, "akun tidak aktif, silakan login lagi")
+		return booking.User{}, false
+	}
+	if err != nil {
+		writeServiceError(w, err)
+		return booking.User{}, false
+	}
+	return u, true
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -72,18 +107,24 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		PIN string `json:"pin"`
+		Username string `json:"username"`
+		PIN      string `json:"pin"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if !s.auth.CheckPIN(in.PIN) {
+	u, err := s.svc.Login(r.Context(), in.Username, in.PIN)
+	if errors.Is(err, booking.ErrBadLogin) {
 		time.Sleep(time.Second) // slow down guessing
-		writeError(w, http.StatusUnauthorized, "PIN salah")
+		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-	s.auth.SetCookie(w)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	s.auth.SetCookie(w, u.Username)
+	writeJSON(w, http.StatusOK, s.meBody(u))
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -92,36 +133,77 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"logged_in": s.auth.LoggedIn(r),
-		"now":       s.svc.Now(),
-		"timezone":  s.svc.Location().String(),
-	})
+	body := map[string]any{"logged_in": false, "now": s.svc.Now(), "timezone": s.svc.Location().String()}
+	if name, ok := s.auth.RequestUsername(r); ok {
+		if u, err := s.svc.SessionUser(r.Context(), name); err == nil {
+			body = s.meBody(u)
+		}
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
-func (s *Server) rooms(w http.ResponseWriter, r *http.Request) {
-	rooms, err := s.svc.Rooms(r.Context())
-	if err != nil {
+func (s *Server) meBody(u booking.User) map[string]any {
+	return map[string]any{
+		"logged_in":   true,
+		"user":        u,
+		"permissions": u.Role.Permissions(),
+		"now":         s.svc.Now(),
+		"timezone":    s.svc.Location().String(),
+	}
+}
+
+func (s *Server) changeOwnPIN(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in struct {
+		OldPIN string `json:"old_pin"`
+		NewPIN string `json:"new_pin"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.svc.ChangeOwnPIN(r.Context(), u, in.OldPIN, in.NewPIN); err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rooms)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (s *Server) dayBookings(w http.ResponseWriter, r *http.Request) {
+// ---------- Rooms ----------
+
+func (s *Server) rooms(w http.ResponseWriter, r *http.Request, _ booking.User) {
+	rooms, err := s.svc.Rooms(r.Context())
+	respond(w, http.StatusOK, rooms, err)
+}
+
+func (s *Server) createRoom(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in booking.RoomInput
+	if !decode(w, r, &in) {
+		return
+	}
+	room, err := s.svc.CreateRoom(r.Context(), u, in)
+	respond(w, http.StatusCreated, room, err)
+}
+
+func (s *Server) updateRoom(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in booking.RoomInput
+	if !decode(w, r, &in) {
+		return
+	}
+	room, err := s.svc.UpdateRoom(r.Context(), u, r.PathValue("id"), in)
+	respond(w, http.StatusOK, room, err)
+}
+
+// ---------- Bookings ----------
+
+func (s *Server) dayBookings(w http.ResponseWriter, r *http.Request, u booking.User) {
 	day, ok := s.dateParam(w, r)
 	if !ok {
 		return
 	}
-	list, err := s.svc.DayBookings(r.Context(), day)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, nonNil(list))
+	list, err := s.svc.DayBookings(r.Context(), u, day)
+	respond(w, http.StatusOK, nonNil(list), err)
 }
 
-func (s *Server) createBooking(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking.User) {
 	var in struct {
 		RoomID          string `json:"room_id"`
 		CustomerName    string `json:"customer_name"`
@@ -138,55 +220,86 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "format jam mulai harus YYYY-MM-DDTHH:MM")
 		return
 	}
-	b, err := s.svc.Create(r.Context(), booking.CreateInput{
+	b, err := s.svc.Create(r.Context(), u, booking.CreateInput{
 		RoomID: in.RoomID, CustomerName: in.CustomerName, Phone: in.Phone,
 		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes,
 	})
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, b)
+	respond(w, http.StatusCreated, b, err)
 }
 
-func (s *Server) extend(w http.ResponseWriter, r *http.Request) {
+func (s *Server) extend(w http.ResponseWriter, r *http.Request, u booking.User) {
 	var in struct {
 		Minutes int `json:"minutes"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	b, err := s.svc.Extend(r.Context(), r.PathValue("id"), in.Minutes)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, b)
+	b, err := s.svc.Extend(r.Context(), u, r.PathValue("id"), in.Minutes)
+	respond(w, http.StatusOK, b, err)
 }
 
-func (s *Server) action(fn func(ctx context.Context, id string) (booking.Booking, error)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		b, err := fn(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeServiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, b)
+func (s *Server) action(fn func(ctx context.Context, actor booking.User, id string) (booking.Booking, error)) userHandler {
+	return func(w http.ResponseWriter, r *http.Request, u booking.User) {
+		b, err := fn(r.Context(), u, r.PathValue("id"))
+		respond(w, http.StatusOK, b, err)
 	}
 }
 
-func (s *Server) report(w http.ResponseWriter, r *http.Request) {
+func (s *Server) report(w http.ResponseWriter, r *http.Request, u booking.User) {
 	day, ok := s.dateParam(w, r)
 	if !ok {
 		return
 	}
-	rep, err := s.svc.Report(r.Context(), day)
-	if err != nil {
-		writeServiceError(w, err)
+	rep, err := s.svc.Report(r.Context(), u, day)
+	respond(w, http.StatusOK, rep, err)
+}
+
+func (s *Server) activity(w http.ResponseWriter, r *http.Request, u booking.User) {
+	day, ok := s.dateParam(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, rep)
+	list, err := s.svc.Activity(r.Context(), u, day)
+	respond(w, http.StatusOK, nonNil(list), err)
 }
+
+// ---------- Users ----------
+
+func (s *Server) users(w http.ResponseWriter, r *http.Request, u booking.User) {
+	list, err := s.svc.Users(r.Context(), u)
+	respond(w, http.StatusOK, nonNil(list), err)
+}
+
+func (s *Server) createUser(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in booking.UserInput
+	if !decode(w, r, &in) {
+		return
+	}
+	nu, err := s.svc.CreateUser(r.Context(), u, in)
+	respond(w, http.StatusCreated, nu, err)
+}
+
+func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in booking.UserUpdate
+	if !decode(w, r, &in) {
+		return
+	}
+	nu, err := s.svc.UpdateUser(r.Context(), u, r.PathValue("username"), in)
+	respond(w, http.StatusOK, nu, err)
+}
+
+func (s *Server) resetPIN(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in struct {
+		PIN string `json:"pin"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	err := s.svc.ResetPIN(r.Context(), u, r.PathValue("username"), in.PIN)
+	respond(w, http.StatusOK, map[string]bool{"ok": true}, err)
+}
+
+// ---------- TV ----------
 
 // tv serves the room TV. It needs the TV key, not a staff login, so a TV
 // can run unattended. It only returns the guest name and times.
@@ -200,12 +313,10 @@ func (s *Server) tv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st, err := s.svc.RoomStatus(r.Context(), r.URL.Query().Get("room"))
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, st)
+	respond(w, http.StatusOK, st, err)
 }
+
+// ---------- Helpers ----------
 
 func (s *Server) dateParam(w http.ResponseWriter, r *http.Request) (time.Time, bool) {
 	v := r.URL.Query().Get("date")
@@ -218,6 +329,14 @@ func (s *Server) dateParam(w http.ResponseWriter, r *http.Request) (time.Time, b
 		return time.Time{}, false
 	}
 	return d, true
+}
+
+func respond(w http.ResponseWriter, code int, v any, err error) {
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, code, v)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -237,6 +356,10 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, booking.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, booking.ErrForbidden):
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, booking.ErrBadLogin):
+		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.Is(err, booking.ErrConflict), errors.Is(err, booking.ErrWrongState):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, booking.ErrInvalid):

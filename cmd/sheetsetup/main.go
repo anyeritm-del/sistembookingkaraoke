@@ -2,8 +2,9 @@
 // an existing spreadsheet. It only adds what is missing; it never changes data.
 //
 //	set -a; . ./.env; set +a
-//	go run ./cmd/sheetsetup -check   # read only: list tabs
-//	go run ./cmd/sheetsetup -seed    # create tabs, add 4 sample rooms if Rooms is new
+//	go run ./cmd/sheetsetup -check   # read only: show what would change
+//	go run ./cmd/sheetsetup          # add missing tabs and columns
+//	go run ./cmd/sheetsetup -seed    # same, plus 4 sample rooms if Rooms is new
 package main
 
 import (
@@ -13,7 +14,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -49,14 +49,24 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Tab yang ada: %s\n", strings.Join(tabs, ", "))
-	for _, t := range []string{sheetstore.RoomsSheet, sheetstore.BookingsSheet} {
-		if slices.Contains(tabs, t) {
-			fmt.Printf("  %s: sudah ada (tidak akan diubah)\n", t)
-		} else {
-			fmt.Printf("  %s: belum ada (akan dibuat)\n", t)
+	status, err := st.CheckSchema(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	changes := 0
+	for _, s := range status {
+		switch {
+		case !s.Exists:
+			changes++
+			fmt.Printf("  %-9s belum ada -> akan dibuat (%s)\n", s.Tab, strings.Join(s.MissingColumns, ", "))
+		case len(s.MissingColumns) > 0:
+			changes++
+			fmt.Printf("  %-9s kolom baru di ujung kanan: %s\n", s.Tab, strings.Join(s.MissingColumns, ", "))
+		default:
+			fmt.Printf("  %-9s OK\n", s.Tab)
 		}
 	}
-	if *check {
+	if *check || changes == 0 {
 		return
 	}
 

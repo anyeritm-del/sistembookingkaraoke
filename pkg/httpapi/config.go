@@ -19,8 +19,11 @@ import (
 
 // Environment variables:
 //
-//	ADMIN_PIN                    staff login PIN (min 4, 6+ recommended)
+//	ADMIN_PIN                    PIN for the first login as "admin" while the Users tab
+//	                             is empty; it then becomes that account's PIN
 //	SESSION_SECRET               random string, min 32 chars, signs the login cookie
+//	PIN_PEPPER                   random string, min 32 chars, mixed into PIN hashes.
+//	                             Never change it: all saved PINs would stop working.
 //	TV_KEY                       secret the room TVs send to read room status
 //	APP_TIMEZONE                 default Asia/Jakarta (WIB)
 //	STORE                        "sheets" (default) or "memory" (local testing only)
@@ -39,8 +42,9 @@ func NewFromEnv(ctx context.Context) (*Server, error) {
 		}
 		return v
 	}
-	pin := need("ADMIN_PIN")
+	bootstrapPIN := strings.TrimSpace(os.Getenv("ADMIN_PIN"))
 	secret := need("SESSION_SECRET")
+	pepper := need("PIN_PEPPER")
 	tvKey := need("TV_KEY")
 
 	tzName := os.Getenv("APP_TIMEZONE")
@@ -87,14 +91,18 @@ func NewFromEnv(ctx context.Context) (*Server, error) {
 		return nil, fmt.Errorf("environment variable belum di-set: %s", strings.Join(missing, ", "))
 	}
 
-	a, err := auth.New(pin, secret, sessionTTL)
+	a, err := auth.New(secret, sessionTTL)
+	if err != nil {
+		return nil, err
+	}
+	pins, err := auth.NewPINHasher(pepper)
 	if err != nil {
 		return nil, err
 	}
 	if len(tvKey) < 16 {
 		return nil, errors.New("TV_KEY minimal 16 karakter")
 	}
-	return New(booking.NewService(store, loc), a, tvKey), nil
+	return New(booking.NewService(store, loc, pins, bootstrapPIN), a, tvKey), nil
 }
 
 func decodeCredentials(v string) ([]byte, error) {
