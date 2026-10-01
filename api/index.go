@@ -4,6 +4,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -27,9 +28,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	if initErr != nil {
+		// The init error names variables and rules only, never their values.
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"konfigurasi server belum lengkap, cek environment variable di Vercel"}`))
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "konfigurasi server belum lengkap, cek environment variable di Vercel: " + initErr.Error(),
+		})
 		return
 	}
 	server.ServeHTTP(w, r)

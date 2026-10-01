@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -76,7 +77,8 @@ func NewFromEnv(ctx context.Context) (*Server, error) {
 		}
 		store, err = sheetstore.New(ctx, credJSON, id, loc)
 		if err != nil {
-			return nil, err
+			// Do not pass on the library error: it may quote part of the key.
+			return nil, errors.New("GOOGLE_SERVICE_ACCOUNT_JSON bukan service account key yang valid")
 		}
 	default:
 		return nil, fmt.Errorf("STORE harus sheets atau memory")
@@ -96,12 +98,15 @@ func NewFromEnv(ctx context.Context) (*Server, error) {
 }
 
 func decodeCredentials(v string) ([]byte, error) {
-	if strings.HasPrefix(v, "{") {
-		return []byte(v), nil
+	b := []byte(v)
+	if !strings.HasPrefix(v, "{") {
+		var err error
+		if b, err = base64.StdEncoding.DecodeString(v); err != nil {
+			return nil, errors.New("GOOGLE_SERVICE_ACCOUNT_JSON harus JSON atau base64 dari JSON")
+		}
 	}
-	b, err := base64.StdEncoding.DecodeString(v)
-	if err != nil {
-		return nil, errors.New("GOOGLE_SERVICE_ACCOUNT_JSON harus JSON atau base64 dari JSON")
+	if !json.Valid(b) {
+		return nil, errors.New("GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON yang valid (terpotong saat di-paste?)")
 	}
 	return b, nil
 }
