@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B0B12">
+
+    <LinearLayout
+        android:layout_width="640dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setup_title"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView style="@style/SetupLabel" android:text="@string/setup_server" />
+        <EditText
+            android:id="@+id/server"
+            style="@style/SetupInput"
+            android:inputType="textUri" />
+
+        <TextView style="@style/SetupLabel" android:text="@string/setup_room" />
+        <EditText
+            android:id="@+id/room"
+            style="@style/SetupInput"
+            android:inputType="textCapCharacters" />
+
+        <TextView style="@style/SetupLabel" android:text="@string/setup_key" />
+        <EditText
+            android:id="@+id/key"
+            style="@style/SetupInput"
+            android:inputType="textVisiblePassword" />
+
+        <TextView
+            android:id="@+id/error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textColor="#F87171"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/setup_save"
+            android:textSize="18sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/setup_hint"
+            android:textColor="#A3A3B8"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>

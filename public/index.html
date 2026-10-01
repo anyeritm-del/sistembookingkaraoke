@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Booking Karaoke</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%236d28d9'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E2%99%AA%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/css/app.css">
+  <script type="module" src="/js/admin.js"></script>
+</head>
+<body>
+  <!-- Login -->
+  <section id="login-view" class="login" hidden>
+    <h1>Booking Karaoke</h1>
+    <p>Masuk sebagai staf</p>
+    <form id="login-form">
+      <div class="field">
+        <label for="pin">PIN staf</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required minlength="4">
+      </div>
+      <p id="login-error" class="msg error" role="alert" hidden></p>
+      <button class="btn primary" type="submit">Masuk</button>
+    </form>
+  </section>
+
+  <!-- App -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <h1>Booking Karaoke</h1>
+      <span class="clock" id="clock" aria-live="off"></span>
+      <input id="date" type="date" aria-label="Tanggal">
+      <div class="tabs" role="tablist">
+        <button class="btn" role="tab" id="tab-schedule" aria-selected="true" aria-controls="schedule-view">Jadwal</button>
+        <button class="btn" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view">Laporan</button>
+      </div>
+      <button class="btn primary" id="new-booking">+ Booking baru</button>
+      <button class="btn" id="logout">Keluar</button>
+    </header>
+
+    <main>
+      <p id="flash" class="msg" role="status" aria-live="polite" hidden></p>
+
+      <section id="schedule-view" role="tabpanel" aria-labelledby="tab-schedule">
+        <div class="rooms" id="rooms"></div>
+      </section>
+
+      <section id="report-view" role="tabpanel" aria-labelledby="tab-report" hidden>
+        <div class="report-head">
+          <h2 id="report-title">Laporan harian</h2>
+          <button class="btn no-print" id="print-report">Cetak</button>
+        </div>
+        <div class="tiles" id="report-tiles"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Room</th><th class="num">Booking</th><th class="num">Jam terpakai</th><th class="num">Pendapatan</th></tr>
+            </thead>
+            <tbody id="report-rows"></tbody>
+            <tfoot><tr id="report-total"></tr></tfoot>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Create booking -->
+  <dialog id="booking-dialog" aria-labelledby="booking-dialog-title">
+    <form id="booking-form" method="dialog">
+      <h2 id="booking-dialog-title">Booking baru</h2>
+      <div class="field">
+        <label for="f-room">Room</label>
+        <select id="f-room" name="room_id" required></select>
+      </div>
+      <div class="field">
+        <label for="f-name">Nama tamu</label>
+        <input id="f-name" name="customer_name" required maxlength="80" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-phone">No. HP <span class="hint">(opsional)</span></label>
+        <input id="f-phone" name="phone" type="tel" inputmode="tel" maxlength="20" autocomplete="off">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="f-start">Jam mulai</label>
+          <input id="f-start" name="start" type="datetime-local" required>
+        </div>
+        <div class="field">
+          <label for="f-duration">Durasi</label>
+          <select id="f-duration" name="duration_minutes" required></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-notes">Catatan <span class="hint">(opsional)</span></label>
+        <textarea id="f-notes" name="notes" rows="2" maxlength="300"></textarea>
+      </div>
+      <p class="total" id="f-total" aria-live="polite"></p>
+      <p id="booking-error" class="msg error" role="alert" hidden></p>
+      <div class="buttons">
+        <button class="btn" type="button" id="booking-cancel">Batal</button>
+        <button class="btn primary" type="submit" id="booking-submit">Simpan booking</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

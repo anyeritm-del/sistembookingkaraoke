@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Timer Room</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%236d28d9'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E2%99%AA%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/css/tv.css">
+  <script src="/js/tv.js" defer></script>
+</head>
+<body class="idle">
+  <!-- First-time setup: which room this TV belongs to. -->
+  <section id="setup" class="setup" hidden>
+    <h1>Pengaturan TV</h1>
+    <form id="setup-form">
+      <label for="s-room">Kode room (contoh: R01)</label>
+      <input id="s-room" name="room" required autocomplete="off" autocapitalize="characters">
+      <label for="s-key">TV key</label>
+      <input id="s-key" name="key" required autocomplete="off">
+      <button type="submit">Simpan</button>
+    </form>
+    <p id="setup-error" class="error" role="alert"></p>
+  </section>
+
+  <main id="screen" hidden>
+    <header class="bar">
+      <span id="room-name" class="room-name"></span>
+      <span id="clock" class="clock"></span>
+    </header>
+
+    <!-- No guest checked in -->
+    <section id="idle-view" class="center">
+      <p class="welcome">Selamat datang</p>
+      <p id="idle-next" class="sub"></p>
+    </section>
+
+    <!-- Guest checked in -->
+    <section id="run-view" class="center" hidden>
+      <p id="guest" class="guest"></p>
+      <p class="label">Sisa waktu</p>
+      <p id="countdown" class="countdown">--:--</p>
+      <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+      <p id="end-at" class="sub"></p>
+    </section>
+
+    <!-- Banner for the 5-minute warning and time-up alarm -->
+    <section id="banner" class="banner" role="alert" hidden>
+      <p id="banner-title" class="banner-title"></p>
+      <p id="banner-text" class="banner-text"></p>
+      <button id="snooze" type="button" hidden>Senyapkan 2 menit</button>
+    </section>
+
+    <footer class="bar foot">
+      <span id="net" class="net"></span>
+      <button id="test-sound" type="button">Tes suara</button>
+    </footer>
+  </main>
+
+  <!-- Browsers block sound until the user presses a key once. -->
+  <div id="unlock" class="unlock" hidden>
+    <button id="unlock-btn" type="button">Tekan OK untuk mengaktifkan suara alarm</button>
+  </div>
+</body>
+</html>

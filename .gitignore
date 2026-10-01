@@ -1,0 +1,21 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*service-account*.json
+
+# Vercel
+.vercel/
+
+# Android
+android-tv/.gradle/
+android-tv/build/
+android-tv/app/build/
+android-tv/local.properties
+android-tv/*.jks
+android-tv/*.keystore
+*.apk
+
+# OS / editors
+.DS_Store
+.idea/

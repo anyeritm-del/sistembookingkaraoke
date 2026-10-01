@@ -1,0 +1,5 @@
+android-tv/
+cmd/
+*.apk
+*.md
+.env*

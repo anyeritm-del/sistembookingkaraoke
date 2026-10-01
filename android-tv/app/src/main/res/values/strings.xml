@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Karaoke TV Timer</string>
+    <string name="setup_title">Pengaturan TV</string>
+    <string name="setup_server">Alamat server (https://…)</string>
+    <string name="setup_room">Kode room (contoh: R01)</string>
+    <string name="setup_key">TV key</string>
+    <string name="setup_save">Simpan dan mulai</string>
+    <string name="setup_hint">Buka pengaturan lagi: tekan lama tombol BACK atau tekan MENU.</string>
+    <string name="setup_invalid">Isi semua kolom. Alamat server harus diawali https://</string>
+    <string name="ssl_error">Sertifikat HTTPS server tidak valid. Mencoba lagi…</string>
+</resources>
