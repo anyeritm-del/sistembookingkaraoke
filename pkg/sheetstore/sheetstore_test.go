@@ -28,7 +28,12 @@ var (
 		{"Budi", "Budi S", "Supervisor", "v1$1$AA$AA", true, "2026-10-01 10:00:00", "bad time"},
 	}
 	activityHeader = [][]any{toAny(ActivityColumns)}
-	devicesTab     = [][]any{
+	pricingTab     = [][]any{
+		toAny(PricingColumns),
+		{"weekday", "11:00", "17:00", float64(60000)},
+		{"Weekend", "17:00:00", "11:00", "170.000"},
+	}
+	devicesTab = [][]any{
 		toAny(DeviceColumns),
 		{"TV-1", "TV Room 1", "R01", "active", "abc", "", "", "admin", "2026-10-02 10:00:00", "2026-10-02 10:05:00", ""},
 	}
@@ -46,7 +51,7 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 		"checked_in", float64(100000), float64(150000), "", "2026-10-01 18:55:10", "",
 		"2026-10-01 10:00:00", "2026-10-01 18:55:10", "VIP guest", "sari", "sari", "", "", "budi", "2026-10-01 17:00"}
 
-	snap, err := s.parse(roomsTab, [][]any{header, row, {}}, usersTab, activityHeader, devicesTab)
+	snap, err := s.parse(roomsTab, [][]any{header, row, {}}, usersTab, activityHeader, devicesTab, pricingTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +88,7 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 
 func TestParseUsers(t *testing.T) {
 	s := testStore(t)
-	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab)
+	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab, pricingTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +111,7 @@ func TestParseUsers(t *testing.T) {
 
 func TestParseDevices(t *testing.T) {
 	s := testStore(t)
-	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab)
+	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab, pricingTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +128,33 @@ func TestParseDevices(t *testing.T) {
 	}
 }
 
+func TestParsePricing(t *testing.T) {
+	s := testStore(t)
+	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab, pricingTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []booking.PriceRule{
+		{DayType: booking.Weekday, Start: 660, End: 1020, RatePerHour: 60000},
+		{DayType: booking.Weekend, Start: 1020, End: 660, RatePerHour: 170000},
+	}
+	if len(snap.pricing) != 2 || snap.pricing[0] != want[0] || snap.pricing[1] != want[1] {
+		t.Errorf("pricing = %+v", snap.pricing)
+	}
+	bad := [][]any{toAny(PricingColumns), {"weekday", "jam 11", "17:00", 1}}
+	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab, bad); err == nil {
+		t.Error("want error for bad time")
+	}
+}
+
 func TestParseMissingColumn(t *testing.T) {
 	s := testStore(t)
 	// An old Bookings tab without the *_by columns must ask for setup.
 	old := toAny(BookingColumns[:15])
-	if _, err := s.parse(roomsTab, [][]any{old}, usersTab, activityHeader, devicesTab); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{old}, usersTab, activityHeader, devicesTab, pricingTab); err == nil {
 		t.Fatal("want error for missing columns")
 	}
-	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, nil, activityHeader, devicesTab); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, nil, activityHeader, devicesTab, pricingTab); err == nil {
 		t.Fatal("want error for empty Users tab")
 	}
 }
@@ -138,7 +162,7 @@ func TestParseMissingColumn(t *testing.T) {
 func TestParseBadTime(t *testing.T) {
 	s := testStore(t)
 	row := []any{"BK-1", "R01", "A", "", "besok", "2026-10-01 20:00"}
-	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns), row}, usersTab, activityHeader, devicesTab); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns), row}, usersTab, activityHeader, devicesTab, pricingTab); err == nil {
 		t.Fatal("want error for bad time")
 	}
 }

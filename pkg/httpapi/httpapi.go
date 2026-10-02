@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +48,9 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.route("POST /api/bookings", s.createBooking)
 	s.route("POST /api/bookings/{id}/extend", s.extend)
 	s.route("GET /api/bookings/list", s.listBookings)
+	s.route("GET /api/bookings/quote", s.quote)
+	s.route("GET /api/pricing", s.pricing)
+	s.route("PUT /api/pricing", s.updatePricing)
 	s.route("POST /api/bookings/{id}/confirm", s.action(s.svc.Confirm))
 	s.route("POST /api/bookings/{id}/checkin", s.action(s.svc.CheckIn))
 	s.route("POST /api/bookings/{id}/checkout", s.action(s.svc.CheckOut))
@@ -232,6 +236,36 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes, Tentative: in.Tentative,
 	})
 	respond(w, http.StatusCreated, b, err)
+}
+
+// quote returns the price for ?room_id=&start=YYYY-MM-DDTHH:MM&duration_minutes=
+// so the booking form shows exactly what the server will charge.
+func (s *Server) quote(w http.ResponseWriter, r *http.Request, _ booking.User) {
+	q := r.URL.Query()
+	start, err := time.ParseInLocation("2006-01-02T15:04", q.Get("start"), s.svc.Location())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "format jam mulai harus YYYY-MM-DDTHH:MM")
+		return
+	}
+	minutes, _ := strconv.Atoi(q.Get("duration_minutes"))
+	qt, err := s.svc.QuoteFor(r.Context(), q.Get("room_id"), start, minutes)
+	respond(w, http.StatusOK, qt, err)
+}
+
+func (s *Server) pricing(w http.ResponseWriter, r *http.Request, _ booking.User) {
+	rules, err := s.svc.Pricing(r.Context())
+	respond(w, http.StatusOK, nonNil(rules), err)
+}
+
+func (s *Server) updatePricing(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in struct {
+		Rules []booking.PriceRule `json:"rules"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	rules, err := s.svc.UpdatePricing(r.Context(), u, in.Rules)
+	respond(w, http.StatusOK, rules, err)
 }
 
 // listBookings serves the booking list: ?from=&to=&status=&q=&room=

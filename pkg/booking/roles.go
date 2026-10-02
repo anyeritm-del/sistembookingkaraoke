@@ -112,6 +112,7 @@ const (
 	ActUserCreate    = "user.create"
 	ActUserUpdate    = "user.update"
 	ActUserPINReset  = "user.pin_reset"
+	ActPricingUpdate = "pricing.update"
 	ActDeviceCreate  = "device.create"
 	ActDevicePair    = "device.pair"
 	ActDeviceRevoke  = "device.revoke"

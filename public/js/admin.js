@@ -11,6 +11,7 @@ const state = {
   user: null,
   perms: new Set(),
   rooms: [],
+  pricing: [],
   bookings: [],
   date: "",
   tab: "schedule",
@@ -90,6 +91,7 @@ const ACTION_LABEL = {
   "booking.cancel": "Batal booking",
   "room.create": "Room baru",
   "room.update": "Ubah room",
+  "pricing.update": "Ubah harga",
   "user.create": "User baru",
   "user.update": "Ubah user",
   "user.pin_reset": "Reset PIN user",
@@ -186,7 +188,7 @@ async function showApp(me) {
   $("#app-view").hidden = false;
   if (!state.date) state.date = ymd(new Date());
   $("#date").value = state.date;
-  state.rooms = await api("GET", "/api/rooms");
+  [state.rooms, state.pricing] = await Promise.all([api("GET", "/api/rooms"), api("GET", "/api/pricing")]);
   selectTab("schedule");
   clearInterval(state.timer);
   state.timer = setInterval(() => { if (state.tab === "schedule") refresh().catch(() => {}); }, REFRESH_MS);
@@ -194,7 +196,7 @@ async function showApp(me) {
 
 // ---------- Tabs ----------
 
-const TABS = ["schedule", "list", "report", "activity", "rooms", "users", "devices"];
+const TABS = ["schedule", "list", "report", "activity", "rooms", "pricing", "users", "devices"];
 
 function selectTab(tab) {
   state.tab = tab;
@@ -223,8 +225,12 @@ async function refresh() {
       renderActivity(await api("GET", `/api/activity?date=${state.date}`));
       break;
     case "rooms":
-      state.rooms = await api("GET", "/api/rooms");
+      [state.rooms, state.pricing] = await Promise.all([api("GET", "/api/rooms"), api("GET", "/api/pricing")]);
       renderRoomAdmin();
+      break;
+    case "pricing":
+      state.pricing = await api("GET", "/api/pricing");
+      renderPricing(state.pricing.length ? state.pricing : DEFAULT_PRICING);
       break;
     case "users":
       renderUsers(await api("GET", "/api/users"));
@@ -246,7 +252,7 @@ function renderRooms() {
     const card = el("article", { class: "room" },
       el("header", {},
         el("h2", { text: room.name || room.id }),
-        el("span", { class: "rate", text: `${room.id} · ${rupiah.format(room.rate_per_hour)}/jam` })),
+        el("span", { class: "rate", text: roomRateLabel(room) })),
     );
     if (isToday) card.append(roomNow(list, now));
     card.append(list.length
@@ -256,6 +262,9 @@ function renderRooms() {
   });
   $("#rooms").replaceChildren(...cards);
 }
+
+// With a price table the rate depends on the start time, so cards show only the code.
+const roomRateLabel = (room) => (state.pricing.length ? room.id : `${room.id} · ${rupiah.format(room.rate_per_hour)}/jam`);
 
 function roomNow(list, now) {
   const cur = list.find((b) => b.status === "checked_in");
@@ -393,6 +402,7 @@ function renderActivity(list) {
 let editingRoom = null;
 
 function renderRoomAdmin() {
+  $("#rooms-pricing-note").hidden = !state.pricing.length;
   $("#room-rows").replaceChildren(...state.rooms.map((r) => el("tr", {},
     td(r.id), td(r.name), td(rupiah.format(r.rate_per_hour), "num"), td(r.active ? "Aktif" : "Nonaktif"),
     el("td", {}, el("div", { class: "actions" },
@@ -429,6 +439,55 @@ async function saveRoom() {
     flash(`Room ${body.id} ditambahkan`);
   }
   await refresh();
+}
+
+// ---------- Pricing (admin) ----------
+
+// Shown as a starting point when the table is still empty.
+const DEFAULT_PRICING = [
+  { day_type: "weekday", start: "11:00", end: "17:00", rate_per_hour: 60000 },
+  { day_type: "weekday", start: "17:00", end: "11:00", rate_per_hour: 120000 },
+  { day_type: "weekend", start: "11:00", end: "17:00", rate_per_hour: 85000 },
+  { day_type: "weekend", start: "17:00", end: "11:00", rate_per_hour: 170000 },
+];
+
+function pricingRow(rule) {
+  const day = el("select", { "aria-label": "Hari" },
+    el("option", { value: "weekday", text: "Senin – Jumat" }),
+    el("option", { value: "weekend", text: "Sabtu – Minggu" }));
+  day.value = rule.day_type;
+  const start = el("input", { type: "time", required: "", "aria-label": "Jam mulai dari", value: rule.start });
+  const end = el("input", { type: "time", required: "", "aria-label": "Sampai sebelum", value: rule.end });
+  const rate = el("input", { inputmode: "numeric", required: "", pattern: "[0-9]{1,9}", "aria-label": "Harga per jam", value: String(rule.rate_per_hour || "") });
+  const tr = el("tr", { class: "pricing-row" },
+    el("td", {}, day), el("td", {}, start), el("td", {}, end), el("td", { class: "num" }, rate),
+    el("td", {}, el("button", { class: "btn small danger", type: "button", text: "Hapus", onclick: () => tr.remove() })));
+  tr.read = () => ({ day_type: day.value, start: start.value, end: end.value, rate_per_hour: Number(rate.value) });
+  return tr;
+}
+
+function renderPricing(rules) {
+  $("#pricing-error").hidden = true;
+  $("#pricing-rows").replaceChildren(...rules.map(pricingRow));
+}
+
+async function savePricing(e) {
+  e.preventDefault();
+  const form = e.currentTarget;
+  if (!form.reportValidity()) return;
+  const btn = form.querySelector("button[type=submit]");
+  btn.disabled = true;
+  $("#pricing-error").hidden = true;
+  try {
+    const rules = [...document.querySelectorAll("#pricing-rows .pricing-row")].map((tr) => tr.read());
+    state.pricing = await api("PUT", "/api/pricing", { rules });
+    renderPricing(state.pricing);
+    flash("Harga disimpan. Berlaku untuk booking baru.");
+  } catch (err) {
+    showError($("#pricing-error"), err);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------- Users (admin) ----------
@@ -583,7 +642,7 @@ function openBookingDialog() {
   $("#f-kind-hint").hidden = true;
   $("#booking-error").hidden = true;
   $("#f-room").replaceChildren(...state.rooms.filter((r) => r.active).map((r) =>
-    el("option", { value: r.id, text: `${r.name || r.id} — ${rupiah.format(r.rate_per_hour)}/jam` })));
+    el("option", { value: r.id, text: state.pricing.length ? `${r.name || r.id}` : `${r.name || r.id} — ${rupiah.format(r.rate_per_hour)}/jam` })));
   const durations = [];
   for (let m = 30; m <= 720; m += 30) durations.push(el("option", { value: String(m), text: fmtDuration(m) }));
   $("#f-duration").replaceChildren(...durations);
@@ -597,12 +656,20 @@ function openBookingDialog() {
   $("#f-name").focus();
 }
 
-function updateTotal() {
-  const room = state.rooms.find((r) => r.id === $("#f-room").value);
-  const minutes = Number($("#f-duration").value);
-  if (!room || !minutes) return;
-  const total = Math.round(room.rate_per_hour * minutes / 60);
-  $("#f-total").textContent = `Total: ${rupiah.format(total)}`;
+// updateTotal asks the server for the price, so the form always shows what
+// will be charged (the rate depends on day and start time).
+let quoteSeq = 0;
+async function updateTotal() {
+  const room = $("#f-room").value, start = $("#f-start").value, minutes = $("#f-duration").value;
+  if (!room || !start || !minutes) return;
+  const seq = ++quoteSeq;
+  try {
+    const q = await api("GET", `/api/bookings/quote?${new URLSearchParams({ room_id: room, start, duration_minutes: minutes })}`);
+    if (seq !== quoteSeq) return; // a newer request is on its way
+    $("#f-total").textContent = `Total: ${rupiah.format(q.total_price)} (${rupiah.format(q.rate_per_hour)}/jam)`;
+  } catch (err) {
+    if (seq === quoteSeq) $("#f-total").textContent = `Harga belum bisa dihitung: ${err.message}`;
+  }
 }
 
 async function submitBooking(e) {
@@ -669,6 +736,9 @@ async function init() {
   $("#booking-form").addEventListener("submit", submitBooking);
   $("#f-room").addEventListener("change", updateTotal);
   $("#f-duration").addEventListener("change", updateTotal);
+  $("#f-start").addEventListener("change", updateTotal);
+  $("#pricing-add").addEventListener("click", () => $("#pricing-rows").append(pricingRow({ day_type: "weekday", start: "11:00", end: "17:00", rate_per_hour: "" })));
+  $("#pricing-form").addEventListener("submit", savePricing);
   for (const r of document.querySelectorAll("input[name=kind]")) {
     r.addEventListener("change", () => { $("#f-kind-hint").hidden = !$("input[name=kind][value=tentative]").checked; });
   }

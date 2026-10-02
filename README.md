@@ -20,7 +20,7 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 | Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |
 | Batalkan booking Confirm | | ✓ | ✓ |
 | Laporan harian, log aktivitas | | ✓ | ✓ |
-| Kelola room (tambah, ubah nama/tarif, aktif/nonaktif) | | | ✓ |
+| Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |
 | Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |
 | Kelola TV (buat kode pairing, cabut TV) | | | ✓ |
 
@@ -62,8 +62,19 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   (maks. 92 hari, default hari ini + 30 hari), dan pencarian nama/HP/catatan.
   Menampilkan jumlah dan total harga, serta tombol aksi di tiap baris.
 
-- Harga = tarif per jam room × durasi (kelipatan 30 menit, maks 12 jam). Tarif
-  dikunci saat booking dibuat, jadi perubahan tarif tidak mengubah booking lama.
+- **Harga** (menu **Harga**, tab `Pricing`), sama untuk semua room:
+
+  | Hari | Mulai 11:00 – 16:59 | Mulai 17:00 – 10:59 |
+  |---|---|---|
+  | Senin – Jumat | Rp 60.000 / jam | Rp 120.000 / jam |
+  | Sabtu – Minggu | Rp 85.000 / jam | Rp 170.000 / jam |
+
+  Harga per jam ditentukan oleh **jam mulai**; seluruh durasi dan perpanjangan
+  memakai harga itu (16:00–18:00 hari kerja = 2 × 60.000). Hari dihitung dari
+  tanggal kalender jam mulai (Sabtu 00:30 = weekend). Durasi kelipatan 30 menit,
+  maks 12 jam. Harga dikunci saat booking dibuat, jadi perubahan harga tidak
+  mengubah booking lama. Jika tab `Pricing` dikosongkan, tarif per room di tab
+  `Rooms` dipakai lagi.
 - Booking tidak boleh bentrok dengan booking aktif lain di room yang sama.
   Perpanjang juga dicek bentrok dengan booking berikutnya.
 - Check-in paling cepat 60 menit sebelum jam mulai, dan hanya jika room tidak
@@ -125,6 +136,10 @@ Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
   — kelola lewat menu **User**. `pin_hash` tidak bisa dibalik menjadi PIN tanpa
   `PIN_PEPPER` yang hanya ada di server. Batasi siapa yang bisa membuka spreadsheet.
 - **Activity**: `time | username | action | booking_id | room_id | detail` — hanya ditambah, jangan diedit.
+- **Pricing**: `day_type | start | end | rate_per_hour` — `weekday`/`weekend`,
+  jam `HH:MM`; jam selesai lebih kecil dari jam mulai = melewati tengah malam.
+  Ubah lewat menu **Harga** (admin), yang memeriksa setiap jenis hari menutup
+  24 jam tanpa tumpang tindih.
 - **Devices**: `id | name | room_id | status | token_hash | pair_code_hash | pair_expires | created_by | created_at | paired_at | revoked_by`
   — TV yang dipasangkan; kelola lewat menu **TV**, jangan diedit.
 

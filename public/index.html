@@ -39,6 +39,7 @@
         <button class="btn" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view" data-perm="report.view">Laporan</button>
         <button class="btn" role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view" data-perm="activity.view">Aktivitas</button>
         <button class="btn" role="tab" id="tab-rooms" aria-selected="false" aria-controls="rooms-view" data-perm="rooms.manage">Room</button>
+        <button class="btn" role="tab" id="tab-pricing" aria-selected="false" aria-controls="pricing-view" data-perm="rooms.manage">Harga</button>
         <button class="btn" role="tab" id="tab-users" aria-selected="false" aria-controls="users-view" data-perm="users.manage">User</button>
         <button class="btn" role="tab" id="tab-devices" aria-selected="false" aria-controls="devices-view" data-perm="devices.manage">TV</button>
       </div>
@@ -124,6 +125,7 @@
           <h2>Kelola room</h2>
           <button class="btn primary" id="new-room">+ Room baru</button>
         </div>
+        <p class="hint-text" id="rooms-pricing-note" hidden>Tabel di menu <b>Harga</b> sedang aktif untuk semua room, jadi kolom tarif di sini tidak dipakai (hanya cadangan bila tabel harga dikosongkan).</p>
         <p class="hint-text">Tarif baru hanya berlaku untuk booking baru. Kode room tidak bisa diubah karena dipakai TV dan riwayat booking; nonaktifkan room yang tidak dipakai.</p>
         <div class="table-wrap">
           <table>
@@ -131,6 +133,24 @@
             <tbody id="room-rows"></tbody>
           </table>
         </div>
+      </section>
+
+      <section id="pricing-view" role="tabpanel" aria-labelledby="tab-pricing" hidden>
+        <div class="report-head"><h2>Harga per jam</h2></div>
+        <p class="hint-text">Berlaku untuk semua room. Harga ditentukan oleh <b>jam mulai</b> booking; seluruh durasi dan perpanjangan memakai harga itu. Jam selesai lebih kecil dari jam mulai berarti melewati tengah malam (17:00 – 11:00 = sore sampai pagi). Setiap jenis hari harus menutup 24 jam tanpa tumpang tindih. Booking yang sudah ada tidak berubah harganya.</p>
+        <form id="pricing-form">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Hari</th><th>Jam mulai dari</th><th>Sampai sebelum</th><th class="num">Harga / jam (Rp)</th><th></th></tr></thead>
+              <tbody id="pricing-rows"></tbody>
+            </table>
+          </div>
+          <p id="pricing-error" class="msg error" role="alert" hidden></p>
+          <div class="buttons pricing-buttons">
+            <button class="btn" type="button" id="pricing-add">+ Tambah baris</button>
+            <button class="btn primary" type="submit">Simpan harga</button>
+          </div>
+        </form>
       </section>
 
       <section id="users-view" role="tabpanel" aria-labelledby="tab-users" hidden>

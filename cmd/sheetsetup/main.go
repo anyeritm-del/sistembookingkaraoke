@@ -25,6 +25,7 @@ import (
 
 func main() {
 	seed := flag.Bool("seed", false, "add 4 sample rooms if the Rooms tab is new")
+	seedPricing := flag.Bool("seed-pricing", false, "fill a new Pricing tab with the agreed weekday/weekend prices")
 	check := flag.Bool("check", false, "only list the tabs; change nothing")
 	flag.Parse()
 
@@ -74,7 +75,11 @@ func main() {
 	if *seed {
 		rooms = memstore.DemoRooms()
 	}
-	if err := st.EnsureSchema(ctx, rooms); err != nil {
+	var pricing []booking.PriceRule
+	if *seedPricing {
+		pricing = booking.DefaultPricing()
+	}
+	if err := st.EnsureSchema(ctx, rooms, pricing); err != nil {
 		log.Fatal(err)
 	}
 	got, err := st.ListRooms(ctx)

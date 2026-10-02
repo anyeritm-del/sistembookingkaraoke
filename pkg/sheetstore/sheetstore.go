@@ -11,6 +11,7 @@
 //	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
+//	Pricing:  day_type | start | end | rate_per_hour   (weekday/weekend, HH:MM)
 //	Devices:  id | name | room_id | status | token_hash | pair_code_hash |
 //	          pair_expires | created_by | created_at | paired_at | revoked_by
 //
@@ -20,6 +21,7 @@ package sheetstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -40,6 +42,7 @@ const (
 	UsersSheet    = "Users"
 	ActivitySheet = "Activity"
 	DevicesSheet  = "Devices"
+	PricingSheet  = "Pricing"
 )
 
 // Column headers, in the order used when a tab is created. New columns are
@@ -55,6 +58,7 @@ var (
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
+	PricingColumns  = []string{"day_type", "start", "end", "rate_per_hour"}
 	DeviceColumns   = []string{
 		"id", "name", "room_id", "status", "token_hash", "pair_code_hash",
 		"pair_expires", "created_by", "created_at", "paired_at", "revoked_by",
@@ -71,6 +75,7 @@ var Schema = []struct {
 	{UsersSheet, UserColumns},
 	{ActivitySheet, ActivityColumns},
 	{DevicesSheet, DeviceColumns},
+	{PricingSheet, PricingColumns},
 }
 
 const (
@@ -108,6 +113,7 @@ type snapshot struct {
 	bookings []booking.Booking
 	users    []booking.User
 	devices  []booking.Device
+	pricing  []booking.PriceRule
 	tabs     map[string]*table
 }
 
@@ -148,6 +154,38 @@ func (s *Store) ListUsers(ctx context.Context) ([]booking.User, error) {
 		return nil, err
 	}
 	return slices.Clone(snap.users), nil
+}
+
+func (s *Store) ListPricing(ctx context.Context) ([]booking.PriceRule, error) {
+	snap, err := s.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(snap.pricing), nil
+}
+
+// ReplacePricing clears the Pricing rows under the header and writes rules.
+func (s *Store) ReplacePricing(ctx context.Context, rules []booking.PriceRule) error {
+	cols, err := s.header(ctx, PricingSheet)
+	if err != nil {
+		return err
+	}
+	rows := make([][]any, len(rules))
+	for i, r := range rules {
+		rows[i] = buildRow(map[string]any{
+			"day_type": string(r.DayType), "start": r.Start.String(), "end": r.End.String(), "rate_per_hour": r.RatePerHour,
+		}, cols, nil)
+	}
+	defer s.invalidate()
+	if _, err := s.api.Spreadsheets.Values.Clear(s.spreadsheetID, PricingSheet+"!A2:Z",
+		&sheets.ClearValuesRequest{}).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("sheets clear pricing: %w", err)
+	}
+	if _, err := s.api.Spreadsheets.Values.Update(s.spreadsheetID, PricingSheet+"!A2",
+		&sheets.ValueRange{Values: rows}).ValueInputOption("RAW").Context(ctx).Do(); err != nil {
+		return fmt.Errorf("sheets write pricing: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]booking.Device, error) {
@@ -354,9 +392,9 @@ func (s *Store) CheckSchema(ctx context.Context) ([]SchemaStatus, error) {
 }
 
 // EnsureSchema creates missing tabs and adds missing header columns at the
-// end of existing tabs. If the Rooms tab is new and seed is not empty, the
-// seed rooms are added. Existing data is never changed.
-func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room) error {
+// end of existing tabs. Seed rooms are added only if the Rooms tab is new,
+// and seed pricing only if the Pricing tab is new. Existing data is never changed.
+func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room, seedPricing []booking.PriceRule) error {
 	status, err := s.CheckSchema(ctx)
 	if err != nil {
 		return err
@@ -393,6 +431,11 @@ func (s *Store) EnsureSchema(ctx context.Context, seed []booking.Room) error {
 		if st.Tab == RoomsSheet && !st.Exists {
 			for _, r := range seed {
 				rows = append(rows, []any{r.ID, r.Name, r.RatePerHour, r.Active})
+			}
+		}
+		if st.Tab == PricingSheet && !st.Exists {
+			for _, r := range seedPricing {
+				rows = append(rows, []any{string(r.DayType), r.Start.String(), r.End.String(), r.RatePerHour})
 			}
 		}
 		if _, err := s.api.Spreadsheets.Values.Update(s.spreadsheetID, rng,
@@ -454,18 +497,18 @@ func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	}
 
 	resp, err := s.api.Spreadsheets.Values.BatchGet(s.spreadsheetID).
-		Ranges(RoomsSheet, BookingsSheet, UsersSheet, ActivitySheet+"!1:1", DevicesSheet).
+		Ranges(RoomsSheet, BookingsSheet, UsersSheet, ActivitySheet+"!1:1", DevicesSheet, PricingSheet).
 		ValueRenderOption("UNFORMATTED_VALUE").
 		DateTimeRenderOption("FORMATTED_STRING").
 		Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("sheets read: %w (jalankan setup sheet jika tab baru belum ada)", err)
 	}
-	if len(resp.ValueRanges) != 5 {
-		return nil, fmt.Errorf("sheets read: expected 5 ranges, got %d", len(resp.ValueRanges))
+	if len(resp.ValueRanges) != 6 {
+		return nil, fmt.Errorf("sheets read: expected 6 ranges, got %d", len(resp.ValueRanges))
 	}
 	v := func(i int) [][]any { return resp.ValueRanges[i].Values }
-	snap, err := s.parse(v(0), v(1), v(2), v(3), v(4))
+	snap, err := s.parse(v(0), v(1), v(2), v(3), v(4), v(5))
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +520,7 @@ func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	return snap, nil
 }
 
-func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader, deviceRows [][]any) (*snapshot, error) {
+func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader, deviceRows, pricingRows [][]any) (*snapshot, error) {
 	snap := &snapshot{tabs: map[string]*table{}}
 	newTable := func(name string, rows [][]any, want []string) (*table, error) {
 		cols, err := headerIndex(name, rows, want)
@@ -585,6 +628,26 @@ func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader, deviceRow
 		d.PairedAt, _ = s.parseTime(cellString(row, dt.cols["paired_at"]))
 		snap.devices = append(snap.devices, d)
 		remember(dt, id, i, row)
+	}
+
+	pt, err := newTable(PricingSheet, pricingRows, PricingColumns)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range pricingRows[1:] {
+		day := strings.ToLower(cellString(row, pt.cols["day_type"]))
+		if day == "" {
+			continue
+		}
+		start, err1 := booking.ParseClock(cellString(row, pt.cols["start"]))
+		end, err2 := booking.ParseClock(cellString(row, pt.cols["end"]))
+		rate, err3 := cellInt(row, pt.cols["rate_per_hour"])
+		if err := errors.Join(err1, err2, err3); err != nil {
+			return nil, fmt.Errorf("%s row %d: %w", PricingSheet, i+2, err)
+		}
+		snap.pricing = append(snap.pricing, booking.PriceRule{
+			DayType: booking.DayType(day), Start: start, End: end, RatePerHour: rate,
+		})
 	}
 	return snap, nil
 }

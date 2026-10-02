@@ -11,6 +11,8 @@ import (
 )
 
 // Booking limits. Durations move in 30-minute steps.
+// The hourly rate comes from the price table (see pricing.go) for the start
+// time, or from the room when there is no table, and is then frozen on the booking.
 const (
 	StepMinutes        = 30
 	MaxDurationMinutes = 12 * 60
@@ -134,6 +136,10 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	if c, ok := findConflict(all, room.ID, start, end, "", now); ok {
 		return Booking{}, conflictError(c)
 	}
+	rate, err := s.rateFor(ctx, room, start)
+	if err != nil {
+		return Booking{}, err
+	}
 
 	b := Booking{
 		ID:           newID(now),
@@ -144,8 +150,8 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 		Start:        start,
 		End:          end,
 		Status:       StatusBooked,
-		RatePerHour:  room.RatePerHour,
-		TotalPrice:   Price(room.RatePerHour, in.DurationMinutes),
+		RatePerHour:  rate,
+		TotalPrice:   Price(rate, in.DurationMinutes),
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		CreatedBy:    actor.Username,

@@ -19,6 +19,7 @@ type Store struct {
 	bookings []booking.Booking
 	users    []booking.User
 	devices  []booking.Device
+	pricing  []booking.PriceRule
 	activity []booking.Activity
 }
 
@@ -149,5 +150,18 @@ func (s *Store) UpdateDevice(_ context.Context, d booking.Device) error {
 		return booking.ErrNotFound
 	}
 	s.devices[i] = d
+	return nil
+}
+
+func (s *Store) ListPricing(context.Context) ([]booking.PriceRule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.pricing), nil
+}
+
+func (s *Store) ReplacePricing(_ context.Context, rules []booking.PriceRule) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pricing = slices.Clone(rules)
 	return nil
 }

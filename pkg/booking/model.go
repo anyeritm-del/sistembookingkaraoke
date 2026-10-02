@@ -113,6 +113,10 @@ type Store interface {
 	// UpdateUser replaces the user with the same username, or returns ErrNotFound.
 	UpdateUser(ctx context.Context, u User) error
 
+	// ListPricing returns the price table; empty means "use each room's rate".
+	ListPricing(ctx context.Context) ([]PriceRule, error)
+	ReplacePricing(ctx context.Context, rules []PriceRule) error
+
 	ListDevices(ctx context.Context) ([]Device, error)
 	AddDevice(ctx context.Context, d Device) error
 	// UpdateDevice replaces the device with the same ID, or returns ErrNotFound.
