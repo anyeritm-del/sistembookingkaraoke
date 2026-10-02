@@ -28,11 +28,15 @@ const (
 	PermCheckIn       Permission = "booking.checkin"
 	PermExtend        Permission = "booking.extend"
 	PermCheckOut      Permission = "booking.checkout"
-	PermCancel        Permission = "booking.cancel"
-	PermViewReport    Permission = "report.view"
-	PermViewActivity  Permission = "activity.view"
-	PermManageRooms   Permission = "rooms.manage"
-	PermManageUsers   Permission = "users.manage"
+	PermConfirm       Permission = "booking.confirm"
+	// PermCancelTentative allows cancelling tentative bookings only;
+	// PermCancel allows cancelling any booking that is not checked in.
+	PermCancelTentative Permission = "booking.cancel_tentative"
+	PermCancel          Permission = "booking.cancel"
+	PermViewReport      Permission = "report.view"
+	PermViewActivity    Permission = "activity.view"
+	PermManageRooms     Permission = "rooms.manage"
+	PermManageUsers     Permission = "users.manage"
 )
 
 // permissions is the single source of truth for access rights.
@@ -41,13 +45,16 @@ const (
 var permissions = map[Role][]Permission{
 	RoleStaff: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
+		PermConfirm, PermCancelTentative,
 	},
 	RoleSupervisor: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
+		PermConfirm, PermCancelTentative,
 		PermCancel, PermViewReport, PermViewActivity,
 	},
 	RoleAdmin: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
+		PermConfirm, PermCancelTentative,
 		PermCancel, PermViewReport, PermViewActivity,
 		PermManageRooms, PermManageUsers,
 	},
@@ -94,6 +101,7 @@ const (
 	ActLogin         = "login"
 	ActPINChange     = "pin.change"
 	ActBookingCreate = "booking.create"
+	ActConfirm       = "booking.confirm"
 	ActCheckIn       = "booking.checkin"
 	ActExtend        = "booking.extend"
 	ActCheckOut      = "booking.checkout"

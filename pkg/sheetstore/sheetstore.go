@@ -8,7 +8,7 @@
 //	Bookings: id | room_id | customer_name | phone | start | end | duration_minutes |
 //	          status | rate_per_hour | total_price | notes | checked_in_at |
 //	          checked_out_at | created_at | updated_at | created_by |
-//	          checked_in_by | checked_out_by | cancelled_by
+//	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
 //
@@ -48,6 +48,7 @@ var (
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at",
 		"checked_out_at", "created_at", "updated_at",
 		"created_by", "checked_in_by", "checked_out_by", "cancelled_by",
+		"confirmed_by", "hold_until",
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
@@ -548,6 +549,7 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 		CheckedInBy:  cellString(row, c["checked_in_by"]),
 		CheckedOutBy: cellString(row, c["checked_out_by"]),
 		CancelledBy:  cellString(row, c["cancelled_by"]),
+		ConfirmedBy:  cellString(row, c["confirmed_by"]),
 	}
 	var err error
 	if b.Start, err = s.parseTime(cellString(row, c["start"])); err != nil || b.Start.IsZero() {
@@ -565,6 +567,7 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 	for name, dst := range map[string]*time.Time{
 		"checked_in_at": &b.CheckedInAt, "checked_out_at": &b.CheckedOutAt,
 		"created_at": &b.CreatedAt, "updated_at": &b.UpdatedAt,
+		"hold_until": &b.HoldUntil,
 	} {
 		if *dst, err = s.parseTime(cellString(row, c[name])); err != nil {
 			return b, fmt.Errorf("%s: %w", name, err)
@@ -596,6 +599,8 @@ func (s *Store) bookingValues(b booking.Booking) map[string]any {
 		"checked_in_by":    b.CheckedInBy,
 		"checked_out_by":   b.CheckedOutBy,
 		"cancelled_by":     b.CancelledBy,
+		"confirmed_by":     b.ConfirmedBy,
+		"hold_until":       s.formatTime(b.HoldUntil, minuteLayout),
 	}
 }
 

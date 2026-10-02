@@ -16,6 +16,12 @@ const (
 	MaxDurationMinutes = 12 * 60
 	// EarlyCheckIn is how long before the start time a guest may check in.
 	EarlyCheckIn = 60 * time.Minute
+	// A tentative booking holds its slot until TentativeHoldBefore the start.
+	// If that is too soon, it holds for TentativeMinHold (never past the start).
+	TentativeHoldBefore = 2 * time.Hour
+	TentativeMinHold    = 30 * time.Minute
+	// MaxListDays limits the date range of the booking list.
+	MaxListDays = 92
 )
 
 // Service applies the booking rules on top of a Store.
@@ -76,6 +82,8 @@ type CreateInput struct {
 	Notes           string    `json:"notes"`
 	Start           time.Time `json:"start"`
 	DurationMinutes int       `json:"duration_minutes"`
+	// Tentative makes a booking that holds the slot only until HoldUntil.
+	Tentative bool `json:"tentative"`
 }
 
 // Create validates the input, checks the schedule and saves a new booking.
@@ -114,12 +122,15 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	if !end.After(now) {
 		return Booking{}, fmt.Errorf("%w: jam selesai sudah lewat", ErrInvalid)
 	}
+	if in.Tentative && !start.After(now) {
+		return Booking{}, fmt.Errorf("%w: tentative hanya untuk booking yang belum mulai; pakai confirm untuk tamu yang sudah datang", ErrInvalid)
+	}
 
 	all, err := s.store.ListBookings(ctx)
 	if err != nil {
 		return Booking{}, err
 	}
-	if c, ok := findConflict(all, room.ID, start, end, ""); ok {
+	if c, ok := findConflict(all, room.ID, start, end, "", now); ok {
 		return Booking{}, conflictError(c)
 	}
 
@@ -138,11 +149,17 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 		UpdatedAt:    now,
 		CreatedBy:    actor.Username,
 	}
+	kind := "confirm"
+	if in.Tentative {
+		b.Status = StatusTentative
+		b.HoldUntil = tentativeHold(start, now)
+		kind = "tentative s/d " + b.HoldUntil.Format("02/01 15:04")
+	}
 	if err := s.store.AddBooking(ctx, b); err != nil {
 		return Booking{}, err
 	}
-	s.audit(ctx, actor, ActBookingCreate, b.ID, b.RoomID, fmt.Sprintf("%s %s-%s %s",
-		b.CustomerName, b.Start.Format("02/01 15:04"), b.End.Format("15:04"), rupiah(b.TotalPrice)))
+	s.audit(ctx, actor, ActBookingCreate, b.ID, b.RoomID, fmt.Sprintf("%s %s-%s %s, %s",
+		b.CustomerName, b.Start.Format("02/01 15:04"), b.End.Format("15:04"), rupiah(b.TotalPrice), kind))
 	return b, nil
 }
 
@@ -152,14 +169,14 @@ func (s *Service) Extend(ctx context.Context, actor User, id string, minutes int
 		return Booking{}, fmt.Errorf("%w: perpanjangan harus kelipatan %d menit", ErrInvalid, StepMinutes)
 	}
 	return s.change(ctx, actor, PermExtend, ActExtend, id, func(b *Booking, all []Booking, now time.Time) (string, error) {
-		if !b.Status.Active() {
-			return "", ErrWrongState
+		if b.Status != StatusBooked && b.Status != StatusCheckedIn {
+			return "", fmt.Errorf("%w: hanya booking confirm atau check-in yang bisa diperpanjang", ErrWrongState)
 		}
 		newEnd := b.End.Add(time.Duration(minutes) * time.Minute)
 		if b.DurationMinutes()+minutes > MaxDurationMinutes {
 			return "", fmt.Errorf("%w: durasi maksimal %d jam", ErrInvalid, MaxDurationMinutes/60)
 		}
-		if c, ok := findConflict(all, b.RoomID, b.End, newEnd, b.ID); ok {
+		if c, ok := findConflict(all, b.RoomID, b.End, newEnd, b.ID, now); ok {
 			return "", conflictError(c)
 		}
 		b.End = newEnd
@@ -168,9 +185,35 @@ func (s *Service) Extend(ctx context.Context, actor User, id string, minutes int
 	})
 }
 
+// Confirm turns a tentative booking into a confirmed one. An expired
+// tentative booking can still be confirmed if its slot is free.
+func (s *Service) Confirm(ctx context.Context, actor User, id string) (Booking, error) {
+	return s.change(ctx, actor, PermConfirm, ActConfirm, id, func(b *Booking, all []Booking, now time.Time) (string, error) {
+		if b.Status != StatusTentative {
+			return "", fmt.Errorf("%w: hanya booking tentative yang bisa dikonfirmasi", ErrWrongState)
+		}
+		if !now.Before(b.End) {
+			return "", fmt.Errorf("%w: waktu booking sudah lewat", ErrWrongState)
+		}
+		if c, ok := findConflict(all, b.RoomID, b.Start, b.End, b.ID, now); ok {
+			return "", conflictError(c)
+		}
+		detail := b.CustomerName
+		if b.Expired(now) {
+			detail += " (sudah kedaluwarsa, slot masih kosong)"
+		}
+		b.Status = StatusBooked
+		b.ConfirmedBy = actor.Username
+		return detail, nil
+	})
+}
+
 // CheckIn marks the guest as arrived. The TV timer starts showing this booking.
 func (s *Service) CheckIn(ctx context.Context, actor User, id string) (Booking, error) {
 	return s.change(ctx, actor, PermCheckIn, ActCheckIn, id, func(b *Booking, all []Booking, now time.Time) (string, error) {
+		if b.Status == StatusTentative {
+			return "", fmt.Errorf("%w: konfirmasi booking tentative dulu sebelum check-in", ErrWrongState)
+		}
 		if b.Status != StatusBooked {
 			return "", ErrWrongState
 		}
@@ -205,11 +248,15 @@ func (s *Service) CheckOut(ctx context.Context, actor User, id string) (Booking,
 	})
 }
 
-// Cancel cancels a booking that has not been checked in.
+// Cancel cancels a booking that has not been checked in. Cancelling a
+// tentative booking needs PermCancelTentative; a confirmed one needs PermCancel.
 func (s *Service) Cancel(ctx context.Context, actor User, id string) (Booking, error) {
-	return s.change(ctx, actor, PermCancel, ActCancel, id, func(b *Booking, _ []Booking, _ time.Time) (string, error) {
-		if b.Status != StatusBooked {
+	return s.change(ctx, actor, PermCancelTentative, ActCancel, id, func(b *Booking, _ []Booking, _ time.Time) (string, error) {
+		if b.Status != StatusBooked && b.Status != StatusTentative {
 			return "", ErrWrongState
+		}
+		if b.Status == StatusBooked && !actor.Can(PermCancel) {
+			return "", fmt.Errorf("%w: membatalkan booking confirm hanya untuk supervisor atau admin", ErrForbidden)
 		}
 		b.Status = StatusCancelled
 		b.CancelledBy = actor.Username
@@ -286,6 +333,7 @@ type DailyReport struct {
 	Finished  int          `json:"finished"`
 	CheckedIn int          `json:"checked_in"`
 	Booked    int          `json:"booked"`
+	Tentative int          `json:"tentative"`
 	Cancelled int          `json:"cancelled"`
 	Minutes   int          `json:"minutes"`
 	Revenue   int64        `json:"revenue"`
@@ -326,6 +374,9 @@ func (s *Service) Report(ctx context.Context, actor User, day time.Time) (DailyR
 			rep.CheckedIn++
 		case StatusBooked:
 			rep.Booked++
+			continue
+		case StatusTentative:
+			rep.Tentative++
 			continue
 		case StatusCancelled:
 			rep.Cancelled++
@@ -422,11 +473,11 @@ func validDuration(minutes int) error {
 	return nil
 }
 
-// findConflict returns an active booking in the room that overlaps [start, end),
-// ignoring the booking with ID skipID.
-func findConflict(all []Booking, roomID string, start, end time.Time, skipID string) (Booking, bool) {
+// findConflict returns a booking in the room that holds a slot overlapping
+// [start, end) at now, ignoring the booking with ID skipID.
+func findConflict(all []Booking, roomID string, start, end time.Time, skipID string, now time.Time) (Booking, bool) {
 	for _, b := range all {
-		if b.ID == skipID || b.RoomID != roomID || !b.Status.Active() {
+		if b.ID == skipID || b.RoomID != roomID || !b.HoldsSlot(now) {
 			continue
 		}
 		if b.Overlaps(start, end) {
@@ -437,8 +488,24 @@ func findConflict(all []Booking, roomID string, start, end time.Time, skipID str
 }
 
 func conflictError(c Booking) error {
-	return fmt.Errorf("%w: %s %s-%s (%s)", ErrConflict, c.RoomID,
-		c.Start.Format("02/01 15:04"), c.End.Format("15:04"), c.CustomerName)
+	kind := ""
+	if c.Status == StatusTentative {
+		kind = ", tentative s/d " + c.HoldUntil.Format("02/01 15:04")
+	}
+	return fmt.Errorf("%w: %s %s-%s (%s%s)", ErrConflict, c.RoomID,
+		c.Start.Format("02/01 15:04"), c.End.Format("15:04"), c.CustomerName, kind)
+}
+
+// tentativeHold returns when a new tentative booking stops holding its slot.
+func tentativeHold(start, now time.Time) time.Time {
+	hold := start.Add(-TentativeHoldBefore)
+	if minHold := now.Add(TentativeMinHold); hold.Before(minHold) {
+		hold = minHold
+	}
+	if hold.After(start) {
+		hold = start
+	}
+	return hold.Truncate(time.Minute)
 }
 
 func (s *Service) findRoom(ctx context.Context, id string) (Room, error) {

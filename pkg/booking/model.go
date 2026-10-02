@@ -10,19 +10,26 @@ import (
 )
 
 // Status of a booking. The normal flow is booked -> checked_in -> finished.
-// A booking that has not been checked in can be cancelled.
+// "booked" is shown as "Confirm" to staff. A tentative booking holds the slot
+// until HoldUntil and must be confirmed before check-in. A booking that has
+// not been checked in can be cancelled.
 type Status string
 
 const (
+	StatusTentative Status = "tentative"
 	StatusBooked    Status = "booked"
 	StatusCheckedIn Status = "checked_in"
 	StatusFinished  Status = "finished"
 	StatusCancelled Status = "cancelled"
 )
 
-// Active reports whether the booking still holds its time slot.
-func (s Status) Active() bool {
-	return s == StatusBooked || s == StatusCheckedIn
+// Valid reports whether s is a known status.
+func (s Status) Valid() bool {
+	switch s {
+	case StatusTentative, StatusBooked, StatusCheckedIn, StatusFinished, StatusCancelled:
+		return true
+	}
+	return false
 }
 
 // Room is a karaoke room. RatePerHour is in rupiah.
@@ -56,6 +63,26 @@ type Booking struct {
 	CheckedInBy  string `json:"checked_in_by"`
 	CheckedOutBy string `json:"checked_out_by"`
 	CancelledBy  string `json:"cancelled_by"`
+	ConfirmedBy  string `json:"confirmed_by"`
+	// HoldUntil is when a tentative booking stops holding the slot.
+	HoldUntil time.Time `json:"hold_until"`
+}
+
+// HoldsSlot reports whether the booking blocks its time slot at now:
+// confirmed and checked-in bookings always do, tentative ones until HoldUntil.
+func (b Booking) HoldsSlot(now time.Time) bool {
+	switch b.Status {
+	case StatusBooked, StatusCheckedIn:
+		return true
+	case StatusTentative:
+		return now.Before(b.HoldUntil)
+	}
+	return false
+}
+
+// Expired reports whether a tentative booking has passed its hold time.
+func (b Booking) Expired(now time.Time) bool {
+	return b.Status == StatusTentative && !now.Before(b.HoldUntil)
 }
 
 // DurationMinutes is the booked length in minutes.

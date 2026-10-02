@@ -45,6 +45,8 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.route("GET /api/bookings", s.dayBookings)
 	s.route("POST /api/bookings", s.createBooking)
 	s.route("POST /api/bookings/{id}/extend", s.extend)
+	s.route("GET /api/bookings/list", s.listBookings)
+	s.route("POST /api/bookings/{id}/confirm", s.action(s.svc.Confirm))
 	s.route("POST /api/bookings/{id}/checkin", s.action(s.svc.CheckIn))
 	s.route("POST /api/bookings/{id}/checkout", s.action(s.svc.CheckOut))
 	s.route("POST /api/bookings/{id}/cancel", s.action(s.svc.Cancel))
@@ -211,6 +213,7 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 		Notes           string `json:"notes"`
 		Start           string `json:"start"` // "2006-01-02T15:04" in business time zone
 		DurationMinutes int    `json:"duration_minutes"`
+		Tentative       bool   `json:"tentative"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -222,9 +225,28 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 	}
 	b, err := s.svc.Create(r.Context(), u, booking.CreateInput{
 		RoomID: in.RoomID, CustomerName: in.CustomerName, Phone: in.Phone,
-		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes,
+		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes, Tentative: in.Tentative,
 	})
 	respond(w, http.StatusCreated, b, err)
+}
+
+// listBookings serves the booking list: ?from=&to=&status=&q=&room=
+// Dates default to today .. today+30.
+func (s *Server) listBookings(w http.ResponseWriter, r *http.Request, u booking.User) {
+	q := r.URL.Query()
+	today := s.svc.Now()
+	from, ok := s.parseDate(w, q.Get("from"), today)
+	if !ok {
+		return
+	}
+	to, ok := s.parseDate(w, q.Get("to"), from.AddDate(0, 0, 30))
+	if !ok {
+		return
+	}
+	list, sum, err := s.svc.List(r.Context(), u, booking.ListFilter{
+		From: from, To: to, Status: q.Get("status"), Query: q.Get("q"), RoomID: q.Get("room"),
+	})
+	respond(w, http.StatusOK, map[string]any{"bookings": nonNil(list), "summary": sum}, err)
 }
 
 func (s *Server) extend(w http.ResponseWriter, r *http.Request, u booking.User) {
@@ -319,9 +341,13 @@ func (s *Server) tv(w http.ResponseWriter, r *http.Request) {
 // ---------- Helpers ----------
 
 func (s *Server) dateParam(w http.ResponseWriter, r *http.Request) (time.Time, bool) {
-	v := r.URL.Query().Get("date")
+	return s.parseDate(w, r.URL.Query().Get("date"), s.svc.Now())
+}
+
+// parseDate parses YYYY-MM-DD, or returns def when v is empty.
+func (s *Server) parseDate(w http.ResponseWriter, v string, def time.Time) (time.Time, bool) {
 	if v == "" {
-		return s.svc.Now(), true
+		return def, true
 	}
 	d, err := time.ParseInLocation(time.DateOnly, v, s.svc.Location())
 	if err != nil {

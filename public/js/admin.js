@@ -68,12 +68,22 @@ const fmtDuration = (min) => {
 };
 const longDate = (s) => new Intl.DateTimeFormat("id-ID", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${s}T00:00:00Z`));
 
-const STATUS_LABEL = { booked: "Booked", checked_in: "Check-in", finished: "Selesai", cancelled: "Batal" };
+const STATUS_LABEL = {
+  tentative: "Tentative", expired: "Kedaluwarsa", booked: "Confirm",
+  checked_in: "Check-in", finished: "Selesai", cancelled: "Cancel",
+};
+// statusOf adds "expired" for tentative bookings past their hold time.
+const statusOf = (b) => (b.status === "tentative" && Date.parse(b.hold_until) <= Date.now() ? "expired" : b.status);
+const statusText = (b) => {
+  const st = statusOf(b);
+  return st === "tentative" ? `Tentative s/d ${hm(new Date(b.hold_until))}` : STATUS_LABEL[st] || st;
+};
 const ROLE_LABEL = { staff: "Staff", supervisor: "Supervisor", admin: "Admin" };
 const ACTION_LABEL = {
   "login": "Login",
   "pin.change": "Ganti PIN sendiri",
   "booking.create": "Booking baru",
+  "booking.confirm": "Konfirmasi",
   "booking.checkin": "Check-in",
   "booking.extend": "Perpanjang",
   "booking.checkout": "Check-out",
@@ -181,7 +191,7 @@ async function showApp(me) {
 
 // ---------- Tabs ----------
 
-const TABS = ["schedule", "report", "activity", "rooms", "users"];
+const TABS = ["schedule", "list", "report", "activity", "rooms", "users"];
 
 function selectTab(tab) {
   state.tab = tab;
@@ -189,7 +199,7 @@ function selectTab(tab) {
     $(`#tab-${name}`).setAttribute("aria-selected", String(name === tab));
     $(`#${name}-view`).hidden = name !== tab;
   }
-  // The date only matters for these tabs.
+  // The top date picker only matters for these tabs; the list has its own range.
   $("#date").hidden = !["schedule", "report", "activity"].includes(tab);
   refresh().catch((err) => flash(err.message, "error"));
 }
@@ -199,6 +209,9 @@ async function refresh() {
     case "schedule":
       state.bookings = await api("GET", `/api/bookings?date=${state.date}`);
       renderRooms();
+      break;
+    case "list":
+      await loadList();
       break;
     case "report":
       renderReport(await api("GET", `/api/report?date=${state.date}`));
@@ -248,17 +261,19 @@ function roomNow(list, now) {
   return el("p", { class: "now", text: "○ Kosong" });
 }
 
-function bookingItem(b) {
-  const start = new Date(b.start), end = new Date(b.end);
-  const minutes = Math.round((end - start) / 60000);
+// bookingActions returns the buttons this user may use on a booking.
+function bookingActions(b) {
+  const start = new Date(b.start);
   const actions = el("div", { class: "actions" });
   const act = (label, fn, cls = "") => el("button", { class: `btn small ${cls}`, type: "button", text: label, onclick: (e) => run(e.currentTarget, fn) });
+  const cancelBtn = () => act("Batal", () => confirm(`Batalkan booking ${b.customer_name} ${hm(start)}?`) && doAction(b, "cancel", undefined, "Booking dibatalkan"), "danger");
 
-  if (b.status === "booked") {
+  if (b.status === "tentative") {
+    if (can("booking.confirm")) actions.append(act("Konfirmasi", () => doAction(b, "confirm", undefined, `Booking ${b.customer_name} dikonfirmasi`), "primary"));
+    if (can("booking.cancel_tentative")) actions.append(cancelBtn());
+  } else if (b.status === "booked") {
     if (can("booking.checkin")) actions.append(act("Check-in", () => doAction(b, "checkin", undefined, `Check-in ${b.customer_name}`)));
-    if (can("booking.cancel")) {
-      actions.append(act("Batal", () => confirm(`Batalkan booking ${b.customer_name} ${hm(start)}?`) && doAction(b, "cancel", undefined, "Booking dibatalkan"), "danger"));
-    }
+    if (can("booking.cancel")) actions.append(cancelBtn());
   } else if (b.status === "checked_in") {
     if (can("booking.extend")) {
       actions.append(
@@ -270,19 +285,28 @@ function bookingItem(b) {
       actions.append(act("Check-out", () => confirm(`Check-out ${b.customer_name}? Alarm di TV akan berhenti.`) && doAction(b, "checkout", undefined, `Check-out ${b.customer_name}`), "primary"));
     }
   }
+  return actions;
+}
 
-  const by = [
-    b.created_by && `dibuat ${b.created_by}`,
-    b.checked_in_by && `in ${b.checked_in_by}`,
-    b.checked_out_by && `out ${b.checked_out_by}`,
-    b.cancelled_by && `batal ${b.cancelled_by}`,
-  ].filter(Boolean).join(", ");
+const byText = (b) => [
+  b.created_by && `dibuat ${b.created_by}`,
+  b.confirmed_by && `konfirmasi ${b.confirmed_by}`,
+  b.checked_in_by && `in ${b.checked_in_by}`,
+  b.checked_out_by && `out ${b.checked_out_by}`,
+  b.cancelled_by && `batal ${b.cancelled_by}`,
+].filter(Boolean).join(", ");
 
+function bookingItem(b) {
+  const start = new Date(b.start), end = new Date(b.end);
+  const minutes = Math.round((end - start) / 60000);
+  const actions = bookingActions(b);
+  const st = statusOf(b);
+  const by = byText(b);
   const dayPrefix = ymd(start) !== state.date ? `${start.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", timeZone: state.tz })} ` : "";
-  return el("li", { class: `bk ${b.status}` },
+  return el("li", { class: `bk ${st}` },
     el("div", { class: "line1" },
       el("span", { class: "time", text: `${dayPrefix}${hm(start)}–${hm(end)}` }),
-      el("span", { class: `badge ${b.status}`, text: STATUS_LABEL[b.status] || b.status })),
+      el("span", { class: `badge ${st}`, text: statusText(b) })),
     el("div", { class: "who", text: b.customer_name + (b.phone ? ` · ${b.phone}` : "") }),
     el("div", { class: "meta", text: `${fmtDuration(minutes)} · ${rupiah.format(b.total_price)}${b.notes ? ` · ${b.notes}` : ""}` }),
     by ? el("div", { class: "meta", text: by }) : null,
@@ -306,13 +330,45 @@ function renderReport(rep) {
     tile("Jam terpakai", fmtDuration(rep.minutes)),
     tile("Selesai", String(rep.finished)),
     tile("Sedang dipakai", String(rep.checked_in)),
-    tile("Belum check-in", String(rep.booked)),
+    tile("Confirm, belum check-in", String(rep.booked)),
+    tile("Tentative", String(rep.tentative)),
     tile("Batal", String(rep.cancelled)),
   );
   $("#report-rows").replaceChildren(...rep.rooms.map((r) => el("tr", {},
     td(r.room_name || r.room_id), td(String(r.bookings), "num"), td(fmtDuration(r.minutes), "num"), td(rupiah.format(r.revenue), "num"))));
   $("#report-total").replaceChildren(
     td("Total"), td(String(rep.finished + rep.checked_in), "num"), td(fmtDuration(rep.minutes), "num"), td(rupiah.format(rep.revenue), "num"));
+}
+
+// ---------- Booking list ----------
+
+async function loadList() {
+  const f = $("#list-filter");
+  if (!$("#l-from").value) {
+    $("#l-from").value = state.date;
+    const to = new Date(`${state.date}T00:00:00Z`);
+    to.setUTCDate(to.getUTCDate() + 30);
+    $("#l-to").value = to.toISOString().slice(0, 10);
+  }
+  const params = new URLSearchParams(new FormData(f));
+  const page = await api("GET", `/api/bookings/list?${params}`);
+  const roomName = (id) => (state.rooms.find((r) => r.id === id) || {}).name || id;
+  const rows = page.bookings.map((b) => {
+    const start = new Date(b.start), end = new Date(b.end);
+    const st = statusOf(b);
+    return el("tr", {},
+      td(new Intl.DateTimeFormat("id-ID", { weekday: "short", day: "2-digit", month: "short", timeZone: state.tz }).format(start)),
+      td(`${hm(start)}–${hm(end)}`),
+      td(roomName(b.room_id)),
+      td(b.customer_name, "wrap"),
+      td(b.phone),
+      td(rupiah.format(b.total_price), "num"),
+      el("td", {}, el("span", { class: `badge ${st}`, text: statusText(b) })),
+      td(byText(b), "wrap"),
+      el("td", {}, bookingActions(b)));
+  });
+  $("#list-rows").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "9", class: "empty", text: "Tidak ada booking dengan filter ini." }))]));
+  $("#list-summary").textContent = `${page.summary.count} booking · total ${rupiah.format(page.summary.total_price)}`;
 }
 
 // ---------- Activity ----------
@@ -448,6 +504,7 @@ async function savePin() {
 function openBookingDialog() {
   const form = $("#booking-form");
   form.reset();
+  $("#f-kind-hint").hidden = true;
   $("#booking-error").hidden = true;
   $("#f-room").replaceChildren(...state.rooms.filter((r) => r.active).map((r) =>
     el("option", { value: r.id, text: `${r.name || r.id} — ${rupiah.format(r.rate_per_hour)}/jam` })));
@@ -478,16 +535,18 @@ async function submitBooking(e) {
   if (!form.reportValidity()) return;
   const data = Object.fromEntries(new FormData(form));
   data.duration_minutes = Number(data.duration_minutes);
+  data.tentative = data.kind === "tentative";
+  delete data.kind;
   const btn = $("#booking-submit");
   btn.disabled = true;
   try {
     const b = await api("POST", "/api/bookings", data);
     $("#booking-dialog").close();
-    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${rupiah.format(b.total_price)})`);
+    const kind = b.status === "tentative" ? `tentative, ditahan s/d ${hm(new Date(b.hold_until))}` : "confirm";
+    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${kind}, ${rupiah.format(b.total_price)})`);
     const day = ymd(new Date(b.start));
     if (day !== state.date) { state.date = day; $("#date").value = day; }
-    if (state.tab !== "schedule") selectTab("schedule");
-    else await refresh();
+    await refresh();
   } catch (err) {
     showError($("#booking-error"), err);
   } finally {
@@ -534,6 +593,13 @@ async function init() {
   $("#booking-form").addEventListener("submit", submitBooking);
   $("#f-room").addEventListener("change", updateTotal);
   $("#f-duration").addEventListener("change", updateTotal);
+  for (const r of document.querySelectorAll("input[name=kind]")) {
+    r.addEventListener("change", () => { $("#f-kind-hint").hidden = !$("input[name=kind][value=tentative]").checked; });
+  }
+  $("#list-filter").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (e.currentTarget.reportValidity()) loadList().catch((err) => flash(err.message, "error"));
+  });
   $("#new-room").addEventListener("click", () => openRoomDialog(null));
   $("#new-user").addEventListener("click", () => openUserDialog(null));
   $("#change-pin").addEventListener("click", () => openPinDialog(null));

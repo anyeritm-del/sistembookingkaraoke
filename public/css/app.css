@@ -91,6 +91,12 @@ input:user-invalid { border-color: var(--danger); }
 .who-am-i { color: var(--muted); font-size: .9rem; }
 .hint-text { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
 .check { display: flex; align-items: center; gap: .5rem; margin-block-end: 1rem; min-height: 44px; }
+.filters { display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: end; margin-block-end: .5rem; }
+.filters .field { flex: 1 1 10rem; }
+.filters .btn { margin-block-end: 1rem; }
+fieldset.kind { border: 0; padding: 0; margin: 0 0 .25rem; display: flex; flex-wrap: wrap; gap: 0 1.5rem; }
+fieldset.kind legend { font-weight: 600; font-size: .95rem; padding: 0; }
+p.hint { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; }
 .check input { width: 1.25rem; min-height: 0; accent-color: var(--accent); }
 td .actions { display: flex; gap: .35rem; justify-content: flex-end; }
 td.wrap { white-space: normal; min-width: 14rem; overflow-wrap: anywhere; }
@@ -128,6 +134,10 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 
 .badge { font-size: .75rem; font-weight: 700; padding: .1rem .5rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .badge.booked { color: var(--info); }
+.badge.tentative { color: var(--warn); border-style: dashed; }
+.badge.expired { color: var(--muted); border-style: dashed; text-decoration: line-through; }
+.bk.tentative { border-style: dashed; }
+.bk.expired { opacity: .6; border-style: dashed; }
 .badge.checked_in { color: var(--ok); }
 .badge.finished { color: var(--muted); }
 .badge.cancelled { color: var(--danger); }

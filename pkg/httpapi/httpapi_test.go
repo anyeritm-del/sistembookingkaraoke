@@ -193,3 +193,44 @@ func TestPostRequiresJSON(t *testing.T) {
 		t.Errorf("form post: %d", rec.Code)
 	}
 }
+
+func TestListAndConfirm(t *testing.T) {
+	s := newTestServer(t)
+	admin := login(t, s, "admin", "112233")
+	do(t, s, "POST", "/api/users", `{"username":"sari","name":"Sari","role":"staff","pin":"582047"}`, admin)
+	staff := login(t, s, "sari", "582047")
+
+	rec := do(t, s, "POST", "/api/bookings",
+		`{"room_id":"R01","customer_name":"Tentatif","start":"2026-10-01T23:00","duration_minutes":60,"tentative":true}`, staff)
+	var tb booking.Booking
+	json.Unmarshal(rec.Body.Bytes(), &tb)
+	if rec.Code != 201 || tb.Status != booking.StatusTentative || tb.HoldUntil.IsZero() {
+		t.Fatalf("create tentative: %d %s", rec.Code, rec.Body)
+	}
+
+	var page struct {
+		Bookings []booking.Booking   `json:"bookings"`
+		Summary  booking.ListSummary `json:"summary"`
+	}
+	rec = do(t, s, "GET", "/api/bookings/list?from=2026-10-01&to=2026-10-07&status=tentative", "", staff)
+	json.Unmarshal(rec.Body.Bytes(), &page)
+	if rec.Code != 200 || page.Summary.Count != 1 || page.Bookings[0].ID != tb.ID {
+		t.Fatalf("list tentative: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(t, s, "GET", "/api/bookings/list?from=2026-10-01&to=bad", "", staff); rec.Code != 400 {
+		t.Errorf("bad date: %d", rec.Code)
+	}
+
+	if rec := do(t, s, "POST", "/api/bookings/"+tb.ID+"/confirm", "{}", staff); rec.Code != 200 {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body)
+	}
+	rec = do(t, s, "GET", "/api/bookings/list?status=booked&from=2026-10-01", "", staff)
+	json.Unmarshal(rec.Body.Bytes(), &page)
+	if page.Summary.Count != 1 || page.Bookings[0].ConfirmedBy != "sari" {
+		t.Errorf("list confirmed: %s", rec.Body)
+	}
+	// Confirmed booking: staff can no longer cancel it.
+	if rec := do(t, s, "POST", "/api/bookings/"+tb.ID+"/cancel", "{}", staff); rec.Code != 403 {
+		t.Errorf("staff cancel confirmed: %d", rec.Code)
+	}
+}
