@@ -20,7 +20,6 @@
   var snoozeUntil = 0;
   var alarmTimer = 0;
   var pollTimer = 0;
-  var audio = null;
 
   function $(id) { return document.getElementById(id); }
   function now() { return Date.now() + clockOffset; }
@@ -215,48 +214,10 @@
     }
   }
 
-  // ---------- Sound (Web Audio, no files needed) ----------
+  // ---------- Sound (see sound.js) ----------
 
-  function ctx() {
-    if (!audio) {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      audio = new AC();
-    }
-    return audio;
-  }
-
-  function tone(freq, startAt, dur, vol) {
-    var a = ctx();
-    if (!a) return;
-    var osc = a.createOscillator(), gain = a.createGain();
-    osc.type = "square";
-    osc.frequency.value = freq;
-    var t0 = a.currentTime + startAt;
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(gain).connect(a.destination);
-    osc.start(t0);
-    osc.stop(t0 + dur + 0.05);
-  }
-
-  // Three rising notes, played twice.
-  function playWarning() {
-    [0, 1.2].forEach(function (offset) {
-      tone(880, offset, 0.25, 0.35);
-      tone(1109, offset + 0.3, 0.25, 0.35);
-      tone(1319, offset + 0.6, 0.45, 0.35);
-    });
-  }
-
-  // Two-tone siren, about 1.6 s.
-  function playAlarm() {
-    for (var i = 0; i < 4; i++) {
-      tone(988, i * 0.4, 0.2, 0.5);
-      tone(740, i * 0.4 + 0.2, 0.2, 0.5);
-    }
-  }
+  var playWarning = window.KaraokeSound.warning;
+  var playAlarm = window.KaraokeSound.alarm;
 
   function startAlarm() {
     if (alarmTimer) return;
@@ -271,15 +232,13 @@
 
   // Autoplay rules: show a button if the audio context is not running yet.
   function checkAudioUnlocked() {
-    var a = ctx();
-    var locked = a && a.state !== "running";
+    var locked = window.KaraokeSound.locked();
     $("unlock").hidden = !locked;
     if (locked) $("unlock-btn").focus();
   }
 
   function unlockAudio() {
-    var a = ctx();
-    if (a && a.resume) a.resume().then(checkAudioUnlocked, checkAudioUnlocked);
+    window.KaraokeSound.unlock(checkAudioUnlocked);
   }
 
   // ---------- Keep the screen on ----------
@@ -325,7 +284,7 @@
       render();
     });
     // Any remote key press counts as a user gesture for audio.
-    document.addEventListener("keydown", function () { if (audio && audio.state !== "running") unlockAudio(); });
+    document.addEventListener("keydown", function () { if (window.KaraokeSound.locked()) unlockAudio(); });
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible") { keepAwake(); poll(); }
     });

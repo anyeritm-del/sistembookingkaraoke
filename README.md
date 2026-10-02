@@ -96,6 +96,20 @@ halaman staf. Tombol "Senyapkan 2 menit" di TV hanya menunda; setelah 2 menit
 alarm bunyi lagi. Setelah perpanjang, peringatan 5 menit akan muncul lagi
 untuk jam selesai yang baru.
 
+**Pengingat di halaman staf/kasir** (semua role, di tab mana pun): halaman
+staf memantau semua room yang sedang check-in hari ini (tiap 15 detik).
+
+- Sisa ≤ 5 menit: kartu oranye di pojok kanan bawah dengan hitung mundur,
+  bunyi peringatan sekali, dan tombol **+30 mnt / +1 jam / Check-out / Tutup**.
+- Waktu habis: kartu merah berkedip dan sirene tiap 2,5 detik sampai staf
+  check-out, perpanjang, atau menekan **Senyapkan**.
+- Judul tab browser berkedip `⏰ (2) Hampir habis` agar terlihat dari jendela lain.
+- Browser hanya mengizinkan suara setelah ada klik. Setelah login suara langsung
+  aktif; jika halaman dibuka ulang, tekan **🔔 Aktifkan suara alarm** atau klik di mana saja.
+- Biarkan tab halaman staf tetap terbuka. Browser bisa memperlambat timer di tab
+  yang lama tidak dilihat, sehingga bunyi bisa tertunda hingga ±1 menit; kartu
+  tetap tepat saat tab dibuka.
+
 TV mengambil status dari server tiap 20 detik (10 detik saat peringatan/alarm),
 dan menghitung mundur sendiri tiap detik memakai jam server. Jika internet
 putus, timer tetap berjalan dan alarm tetap bunyi.

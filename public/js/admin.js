@@ -167,6 +167,7 @@ function submitDialog(dialog, errorBox, fn) {
 
 function showLogin() {
   clearInterval(state.timer);
+  stopMonitor();
   state.user = null;
   state.perms = new Set();
   $("#app-view").hidden = true;
@@ -190,6 +191,7 @@ async function showApp(me) {
   $("#date").value = state.date;
   [state.rooms, state.pricing] = await Promise.all([api("GET", "/api/rooms"), api("GET", "/api/pricing")]);
   selectTab("schedule");
+  startMonitor();
   clearInterval(state.timer);
   state.timer = setInterval(() => { if (state.tab === "schedule") refresh().catch(() => {}); }, REFRESH_MS);
 }
@@ -333,7 +335,112 @@ function bookingItem(b) {
 async function doAction(b, action, body, okText) {
   await api("POST", `/api/bookings/${encodeURIComponent(b.id)}/${action}`, body ?? {});
   flash(okText);
-  await refresh();
+  await Promise.all([refresh(), loadMonitor().catch(() => {})]);
+}
+
+// ---------- Reminders ----------
+// Watches today's checked-in bookings whatever tab is open. At 5 minutes
+// left: an orange card and one warning sound. When time is up: a red card
+// and a siren every few seconds until check-out, extension, or "Senyapkan".
+// The TV in the room shows its own warning too.
+
+const WARN_MS = 5 * 60 * 1000;
+const MONITOR_MS = 15_000;
+const ALARM_EVERY_MS = 2_500;
+const Sound = window.KaraokeSound;
+
+const monitor = {
+  bookings: [],
+  offset: 0, // server time minus this computer's time, in ms
+  warned: new Set(), // "<id>|<end>" already warned with sound
+  hidden: new Set(), // warning cards closed by staff
+  muted: new Set(), // overtime alarms silenced by staff
+  poll: 0,
+  tick: 0,
+  lastAlarm: 0,
+  title: document.title,
+};
+
+const reminderKey = (b) => `${b.id}|${b.end}`;
+const mmss = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+function startMonitor() {
+  stopMonitor();
+  loadMonitor().catch(() => {});
+  monitor.poll = setInterval(() => loadMonitor().catch(() => {}), MONITOR_MS);
+  monitor.tick = setInterval(renderReminders, 1000);
+  updateSoundButton();
+}
+
+function stopMonitor() {
+  clearInterval(monitor.poll);
+  clearInterval(monitor.tick);
+  monitor.bookings = [];
+  $("#reminders").replaceChildren();
+  document.title = monitor.title;
+}
+
+async function loadMonitor() {
+  if (!can("schedule.view")) return;
+  const today = ymd(new Date(Date.now() + monitor.offset));
+  const list = await api("GET", `/api/bookings?date=${today}`);
+  monitor.bookings = list.filter((b) => b.status === "checked_in");
+  renderReminders();
+}
+
+function renderReminders() {
+  const now = Date.now() + monitor.offset;
+  const due = monitor.bookings
+    .map((b) => ({ b, left: Date.parse(b.end) - now }))
+    .filter(({ b, left }) => left <= WARN_MS && !(left > 0 && monitor.hidden.has(reminderKey(b))))
+    .sort((x, y) => x.left - y.left);
+
+  let alarmNeeded = false;
+  const cards = due.map(({ b, left }) => {
+    const key = reminderKey(b);
+    const over = left <= 0;
+    const muted = over && monitor.muted.has(key);
+    if (!over && !monitor.warned.has(key)) {
+      monitor.warned.add(key);
+      Sound.warning();
+    }
+    if (over && !muted) alarmNeeded = true;
+
+    const room = state.rooms.find((r) => r.id === b.room_id);
+    const actions = bookingActions(b);
+    actions.append(el("button", {
+      class: "btn small", type: "button", text: over ? (muted ? "Bunyikan lagi" : "Senyapkan") : "Tutup",
+      onclick: () => {
+        if (!over) monitor.hidden.add(key);
+        else if (muted) monitor.muted.delete(key);
+        else monitor.muted.add(key);
+        renderReminders();
+      },
+    }));
+    return el("section", { class: `reminder ${over ? "overtime" : "warning"}${muted ? " muted" : ""}` },
+      el("div", { class: "r-title", text: `${over ? "⚠ WAKTU HABIS" : "⏰ Hampir habis"} · ${room ? room.name : b.room_id}` }),
+      el("div", { class: "r-time", text: over ? `lewat ${mmss(-left)}` : `sisa ${mmss(left)}` }),
+      el("div", { class: "r-guest", text: `${b.customer_name} · selesai ${hm(new Date(b.end))}` }),
+      actions);
+  });
+  $("#reminders").replaceChildren(...cards);
+
+  if (alarmNeeded && now - monitor.lastAlarm >= ALARM_EVERY_MS) {
+    monitor.lastAlarm = now;
+    Sound.alarm();
+  }
+  // Blink the tab title so the cashier notices from another window.
+  document.title = due.length && Math.floor(now / 1000) % 2
+    ? `⏰ (${due.length}) ${due[0].left <= 0 ? "Waktu habis" : "Hampir habis"}`
+    : monitor.title;
+  updateSoundButton();
+}
+
+function updateSoundButton() {
+  $("#sound-unlock").hidden = !Sound.locked();
 }
 
 // ---------- Report ----------
@@ -759,8 +866,13 @@ async function init() {
   submitDialog($("#user-dialog"), $("#user-error"), saveUser);
   submitDialog($("#pin-dialog"), $("#pin-error"), savePin);
 
+  // Browsers allow sound only after a click; any click on the page unlocks it.
+  document.addEventListener("click", () => { if (Sound.locked()) Sound.unlock(updateSoundButton); });
+  $("#sound-unlock").addEventListener("click", () => { Sound.unlock(updateSoundButton); Sound.warning(); });
+
   try {
     const me = await api("GET", "/api/me");
+    monitor.offset = Date.parse(me.now) - Date.now();
     state.tz = me.timezone || state.tz;
     tickClock();
     setInterval(tickClock, 1000);

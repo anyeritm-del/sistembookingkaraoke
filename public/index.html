@@ -6,6 +6,7 @@
   <title>Booking Karaoke</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%236d28d9'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E2%99%AA%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/css/app.css">
+  <script src="/js/sound.js"></script>
   <script type="module" src="/js/admin.js"></script>
 </head>
 <body>
@@ -45,6 +46,7 @@
       </div>
       <button class="btn primary" id="new-booking" data-perm="booking.create">+ Booking baru</button>
       <span class="who-am-i" id="who-am-i"></span>
+      <button class="btn" id="sound-unlock" hidden>🔔 Aktifkan suara alarm</button>
       <button class="btn" id="change-pin">Ganti PIN</button>
       <button class="btn" id="logout">Keluar</button>
     </header>
@@ -181,6 +183,9 @@
       </section>
     </main>
   </div>
+
+  <!-- Reminders: rooms with 5 minutes or less left, and rooms past their time -->
+  <div class="reminders" id="reminders" role="region" aria-label="Pengingat waktu room" aria-live="assertive"></div>
 
   <!-- Create booking -->
   <dialog id="booking-dialog" aria-labelledby="booking-dialog-title">

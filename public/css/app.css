@@ -175,7 +175,29 @@ td.num, th.num { text-align: end; }
 tfoot td { font-weight: 700; border-bottom: 0; }
 .report-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-block-end: 1rem; flex-wrap: wrap; }
 
+/* Reminders (bottom right, above everything except dialogs) */
+.reminders {
+  position: fixed; right: 16px; bottom: 16px; z-index: 20;
+  display: flex; flex-direction: column; gap: .75rem;
+  width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto;
+}
+.reminder {
+  border-radius: 14px; padding: .9rem 1rem; display: grid; gap: .4rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .25); color: #111;
+}
+.reminder.warning { background: #fbbf24; }
+.reminder.overtime { background: #ef4444; color: #fff; animation: pulse 1s steps(1) infinite; }
+.reminder.overtime.muted { animation: none; background: #991b1b; }
+.reminder .r-title { font-weight: 800; font-size: 1.05rem; }
+.reminder .r-time { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.reminder .r-guest { overflow-wrap: anywhere; }
+.reminder .actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.reminder .btn { color: #111; background: rgb(255 255 255 / .85); border-color: rgb(0 0 0 / .2); }
+.reminder .btn.primary { background: #111; color: #fff; border-color: #111; }
+@keyframes pulse { 50% { background: #b91c1c; } }
+@media (prefers-reduced-motion: reduce) { .reminder.overtime { animation: none; } }
+
 @media print {
-  .topbar, .no-print { display: none !important; }
+  .topbar, .no-print, .reminders { display: none !important; }
   body { background: #fff; color: #000; }
 }
