@@ -3,18 +3,23 @@ package com.sentineltech.karaoketv
 import android.content.Context
 import android.net.Uri
 
-/** TV settings saved on the device: server URL, room code and TV key. */
+/**
+ * TV settings saved on the device. Only the server URL is required: the TV
+ * page then shows its pairing screen and keeps the TV's own token itself.
+ * Room code and TV key are the older way and are optional.
+ */
 data class Settings(val server: String, val room: String, val key: String) {
 
-    val complete: Boolean get() = server.startsWith("https://") && room.isNotBlank() && key.isNotBlank()
+    val complete: Boolean get() = server.startsWith("https://") && (room.isBlank() == key.isBlank())
 
-    /** URL of the TV page, for example https://x.vercel.app/tv?room=R01&key=... */
-    fun tvUrl(): String = Uri.parse(server.trimEnd('/')).buildUpon()
-        .appendPath("tv")
-        .appendQueryParameter("room", room)
-        .appendQueryParameter("key", key)
-        .build()
-        .toString()
+    /** URL of the TV page, with ?room=&key= only when the older way is used. */
+    fun tvUrl(): String {
+        val b = Uri.parse(server.trimEnd('/')).buildUpon().appendPath("tv")
+        if (room.isNotBlank() && key.isNotBlank()) {
+            b.appendQueryParameter("room", room).appendQueryParameter("key", key)
+        }
+        return b.build().toString()
+    }
 
     fun save(context: Context) {
         prefs(context).edit()

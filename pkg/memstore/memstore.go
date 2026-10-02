@@ -18,6 +18,7 @@ type Store struct {
 	rooms    []booking.Room
 	bookings []booking.Booking
 	users    []booking.User
+	devices  []booking.Device
 	activity []booking.Activity
 }
 
@@ -125,4 +126,28 @@ func (s *Store) ListActivity(_ context.Context, from, to time.Time) ([]booking.A
 		}
 	}
 	return out, nil
+}
+
+func (s *Store) ListDevices(context.Context) ([]booking.Device, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.devices), nil
+}
+
+func (s *Store) AddDevice(_ context.Context, d booking.Device) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.devices = append(s.devices, d)
+	return nil
+}
+
+func (s *Store) UpdateDevice(_ context.Context, d booking.Device) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.IndexFunc(s.devices, func(x booking.Device) bool { return x.ID == d.ID })
+	if i < 0 {
+		return booking.ErrNotFound
+	}
+	s.devices[i] = d
+	return nil
 }

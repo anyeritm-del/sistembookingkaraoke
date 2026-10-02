@@ -38,6 +38,7 @@ type Service struct {
 	pins         PINHasher
 	bootstrapPIN string
 	guard        loginGuard
+	pairGuard    loginGuard
 }
 
 // NewService creates a Service. All dates are interpreted in loc.

@@ -27,13 +27,19 @@
 
   // ---------- Config (URL first, then saved on this TV) ----------
 
+  // A paired TV has its own token. The older way is a room code plus the
+  // shared TV key, from the URL (?room=&key=) or saved on this TV.
   function loadConfig() {
     var q = new URLSearchParams(location.search);
     var saved = {};
     try { saved = JSON.parse(localStorage.getItem("karaoke-tv") || "{}"); } catch (e) { /* storage blocked */ }
-    var c = { room: q.get("room") || saved.room || "", key: q.get("key") || saved.key || "" };
-    if (q.get("setup") === "1") c.room = "";
+    var c = { token: saved.token || "", room: q.get("room") || saved.room || "", key: q.get("key") || saved.key || "" };
+    if (q.get("setup") === "1") { c.token = ""; c.room = ""; }
     return c;
+  }
+
+  function configured() {
+    return Boolean(cfg.token || (cfg.room && cfg.key));
   }
 
   function saveConfig(c) {
@@ -47,8 +53,36 @@
     $("setup").hidden = false;
     $("s-room").value = cfg.room;
     $("s-key").value = cfg.key;
+    $("s-code").value = "";
     $("setup-error").textContent = message || "";
-    $("s-room").focus();
+    $("s-code").focus();
+  }
+
+  function pair(code) {
+    $("setup-error").textContent = "Memasangkan…";
+    fetch("/api/tv/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code }),
+      cache: "no-store",
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          return data;
+        });
+      })
+      .then(function (data) {
+        cfg = { token: data.token, room: "", key: "" };
+        saveConfig(cfg);
+        unlockAudio();
+        start();
+      })
+      .catch(function (err) {
+        $("setup-error").textContent = err.message || "Gagal terhubung ke server";
+        $("s-code").value = "";
+        $("s-code").focus();
+      });
   }
 
   // ---------- Server ----------
@@ -56,11 +90,18 @@
   function poll() {
     clearTimeout(pollTimer);
     var sent = Date.now();
-    var url = "/api/tv?room=" + encodeURIComponent(cfg.room);
-    fetch(url, { headers: { "X-TV-Key": cfg.key }, cache: "no-store" })
+    var url = "/api/tv", headers = {};
+    if (cfg.token) {
+      headers["X-TV-Token"] = cfg.token;
+    } else {
+      url += "?room=" + encodeURIComponent(cfg.room);
+      headers["X-TV-Key"] = cfg.key;
+    }
+    fetch(url, { headers: headers, cache: "no-store" })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (data) {
           if (res.status === 401 || res.status === 404) {
+            if (cfg.token) { cfg.token = ""; saveConfig(cfg); } // revoked: pair again
             showSetup(data.error || "Room atau TV key salah");
             throw null; // stop polling until setup is saved
           }
@@ -263,10 +304,18 @@
   document.addEventListener("DOMContentLoaded", function () {
     $("setup-form").addEventListener("submit", function (e) {
       e.preventDefault();
-      cfg = { room: $("s-room").value.trim().toUpperCase(), key: $("s-key").value.trim() };
+      cfg = { token: "", room: $("s-room").value.trim().toUpperCase(), key: $("s-key").value.trim() };
       saveConfig(cfg);
       unlockAudio();
       start();
+    });
+    $("pair-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      pair($("s-code").value.trim());
+    });
+    $("show-legacy").addEventListener("click", function () {
+      $("setup-form").hidden = false;
+      $("s-room").focus();
     });
     $("unlock-btn").addEventListener("click", unlockAudio);
     $("test-sound").addEventListener("click", function () { unlockAudio(); playWarning(); });
@@ -282,7 +331,7 @@
     });
 
     setInterval(render, 1000);
-    if (!cfg.room || !cfg.key) showSetup();
+    if (!configured()) showSetup();
     else { saveConfig(cfg); start(); }
   });
 })();

@@ -40,6 +40,7 @@
         <button class="btn" role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view" data-perm="activity.view">Aktivitas</button>
         <button class="btn" role="tab" id="tab-rooms" aria-selected="false" aria-controls="rooms-view" data-perm="rooms.manage">Room</button>
         <button class="btn" role="tab" id="tab-users" aria-selected="false" aria-controls="users-view" data-perm="users.manage">User</button>
+        <button class="btn" role="tab" id="tab-devices" aria-selected="false" aria-controls="devices-view" data-perm="devices.manage">TV</button>
       </div>
       <button class="btn primary" id="new-booking" data-perm="booking.create">+ Booking baru</button>
       <span class="who-am-i" id="who-am-i"></span>
@@ -142,6 +143,19 @@
           <table>
             <thead><tr><th>Username</th><th>Nama</th><th>Role</th><th>Status</th><th></th></tr></thead>
             <tbody id="user-rows"></tbody>
+          </table>
+        </div>
+      </section>
+      <section id="devices-view" role="tabpanel" aria-labelledby="tab-devices" hidden>
+        <div class="report-head">
+          <h2>TV di room</h2>
+          <button class="btn primary" id="new-device">+ Pasang TV baru</button>
+        </div>
+        <p class="hint-text">Buat kode pairing, lalu ketik kode 6 angka itu di layar <b>Pengaturan TV</b> (aplikasi TV atau halaman /tv). Kode berlaku 15 menit dan hanya sekali pakai. TV yang hilang atau dipindah cukup di-<b>Cabut</b>; TV lain tidak terpengaruh.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nama TV</th><th>Room</th><th>Status</th><th>Dipasangkan</th><th>Dibuat oleh</th><th></th></tr></thead>
+            <tbody id="device-rows"></tbody>
           </table>
         </div>
       </section>
@@ -250,6 +264,37 @@
       <div class="buttons">
         <button class="btn" type="button" data-close>Batal</button>
         <button class="btn primary" type="submit">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Pair a new TV: pick the room, then show the one-time code -->
+  <dialog id="device-dialog" aria-labelledby="device-dialog-title">
+    <form id="device-form" method="dialog">
+      <h2 id="device-dialog-title">Pasang TV baru</h2>
+      <div id="device-step1">
+        <div class="field">
+          <label for="d-room">Room</label>
+          <select id="d-room" name="room_id" required></select>
+        </div>
+        <div class="field">
+          <label for="d-name">Nama TV</label>
+          <input id="d-name" name="name" required maxlength="60" autocomplete="off" aria-describedby="d-name-hint">
+          <span class="hint" id="d-name-hint">Untuk mengenali TV di daftar, mis. "TV Room 02".</span>
+        </div>
+        <p id="device-error" class="msg error" role="alert" hidden></p>
+        <div class="buttons">
+          <button class="btn" type="button" data-close>Batal</button>
+          <button class="btn primary" type="submit">Buat kode pairing</button>
+        </div>
+      </div>
+      <div id="device-step2" hidden>
+        <p>Ketik kode ini di layar <b>Pengaturan TV</b> pada TV <b id="d-show-room"></b>:</p>
+        <p class="pair-code" id="d-code" aria-live="polite"></p>
+        <p class="hint-text" id="d-expires"></p>
+        <div class="buttons">
+          <button class="btn primary" type="button" data-close>Selesai</button>
+        </div>
       </div>
     </form>
   </dialog>

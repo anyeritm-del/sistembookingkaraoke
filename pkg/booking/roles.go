@@ -37,6 +37,7 @@ const (
 	PermViewActivity    Permission = "activity.view"
 	PermManageRooms     Permission = "rooms.manage"
 	PermManageUsers     Permission = "users.manage"
+	PermManageDevices   Permission = "devices.manage"
 )
 
 // permissions is the single source of truth for access rights.
@@ -56,7 +57,7 @@ var permissions = map[Role][]Permission{
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
 		PermCancel, PermViewReport, PermViewActivity,
-		PermManageRooms, PermManageUsers,
+		PermManageRooms, PermManageUsers, PermManageDevices,
 	},
 }
 
@@ -111,4 +112,7 @@ const (
 	ActUserCreate    = "user.create"
 	ActUserUpdate    = "user.update"
 	ActUserPINReset  = "user.pin_reset"
+	ActDeviceCreate  = "device.create"
+	ActDevicePair    = "device.pair"
+	ActDeviceRevoke  = "device.revoke"
 )

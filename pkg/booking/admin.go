@@ -54,15 +54,20 @@ func (g *loginGuard) locked(user string, now time.Time) bool {
 }
 
 func (g *loginGuard) fail(user string, now time.Time) {
+	g.failN(user, now, maxFails, lockFor)
+}
+
+// failN counts a failure for key and locks it for lock after max failures.
+func (g *loginGuard) failN(key string, now time.Time, max int, lock time.Duration) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.fails == nil {
 		g.fails, g.until = map[string]int{}, map[string]time.Time{}
 	}
-	g.fails[user]++
-	if g.fails[user] >= maxFails {
-		g.until[user] = now.Add(lockFor)
-		g.fails[user] = 0
+	g.fails[key]++
+	if g.fails[key] >= max {
+		g.until[key] = now.Add(lock)
+		g.fails[key] = 0
 	}
 }
 

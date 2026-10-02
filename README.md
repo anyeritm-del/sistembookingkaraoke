@@ -22,6 +22,7 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 | Laporan harian, log aktivitas | | ✓ | ✓ |
 | Kelola room (tambah, ubah nama/tarif, aktif/nonaktif) | | | ✓ |
 | Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |
+| Kelola TV (buat kode pairing, cabut TV) | | | ✓ |
 
 - Tabel hak akses ada di satu tempat: [pkg/booking/roles.go](pkg/booking/roles.go).
   Server memeriksanya di setiap request; halaman web hanya menyembunyikan tombol.
@@ -124,6 +125,8 @@ Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
   — kelola lewat menu **User**. `pin_hash` tidak bisa dibalik menjadi PIN tanpa
   `PIN_PEPPER` yang hanya ada di server. Batasi siapa yang bisa membuka spreadsheet.
 - **Activity**: `time | username | action | booking_id | room_id | detail` — hanya ditambah, jangan diedit.
+- **Devices**: `id | name | room_id | status | token_hash | pair_code_hash | pair_expires | created_by | created_at | paired_at | revoked_by`
+  — TV yang dipasangkan; kelola lewat menu **TV**, jangan diedit.
 
 Setelah update aplikasi yang menambah kolom/tab, jalankan lagi
 `go run ./cmd/sheetsetup -check` lalu `go run ./cmd/sheetsetup`. Perintah ini
@@ -153,8 +156,26 @@ hanya menambah tab dan kolom di ujung kanan; data lama tidak diubah.
 
 ### 3. TV di setiap room
 
+**Pairing (cara utama).** Setiap TV mendapat kunci sendiri; tidak perlu mengetik
+kode room atau TV key.
+
+1. Admin buka menu **TV → + Pasang TV baru**, pilih room, beri nama TV, lalu
+   **Buat kode pairing**. Muncul kode 6 angka, berlaku 15 menit, sekali pakai.
+2. Di TV, buka aplikasi TV (atau halaman `/tv` di browser TV). Layar
+   **Pengaturan TV** meminta kode pairing; ketik 6 angka itu dengan remote.
+3. TV langsung menampilkan room-nya (nama room di pojok kiri atas).
+
+TV yang hilang, rusak, atau dipindah ruangan: menu **TV → Cabut**. TV itu
+kembali ke layar pairing; TV lain tidak terpengaruh. Kode yang belum dipakai
+bisa dibatalkan dengan tombol yang sama. Semua kejadian tercatat di Aktivitas.
+Server hanya menyimpan hash kode dan hash token (tab `Devices`). Salah kode 10
+kali dari alamat yang sama mengunci pairing dari alamat itu selama 10 menit.
+
+**Cara lama (masih didukung):** kode room + `TV_KEY` bersama, lewat
+`/tv?room=R01&key=<TV_KEY>` atau tautan "Cara lama" di layar pengaturan.
+
 **Opsi A – Browser TV / mini PC / Chromecast dengan browser:**
-buka `https://<app>.vercel.app/tv?room=R01&key=<TV_KEY>` dalam mode fullscreen.
+buka `https://<app>.vercel.app/tv` dalam mode fullscreen, lalu masukkan kode pairing.
 Tekan OK sekali saat muncul "Tekan OK untuk mengaktifkan suara" (aturan
 autoplay browser). Pengaturan tersimpan di TV; buka `/tv?setup=1` untuk mengubah.
 
@@ -191,20 +212,15 @@ Pasang ke TV:
    adb shell monkey -p com.sentineltech.karaoketv 1   # buka aplikasinya
    ```
 
-3. Layar **Pengaturan TV** muncul. Alamat server sudah terisi. Isi kode room
-   (mis. `R01`). Untuk TV key yang panjang, arahkan kursor ke kolom TV key
-   lalu ketik dari komputer:
+3. Aplikasi langsung membuka layar pairing (alamat server sudah terisi).
+   Ketik kode 6 angka dari menu **TV** di halaman admin.
 
-   ```sh
-   set -a; . ./.env; set +a
-   adb shell input text "$TV_KEY"
-   ```
-
-   Pilih **Simpan dan mulai**.
+   Cara lama: tekan lama BACK untuk membuka pengaturan aplikasi, isi kode room
+   dan TV key (`adb shell input text "$TV_KEY"` untuk mengetik key dari komputer).
 
 Tanpa adb (mis. TV tanpa Developer options): salin APK ke flashdisk, buka dengan
-aplikasi file manager di TV, izinkan *Install unknown apps*, lalu isi pengaturan
-dengan remote. Auto-start setelah boot butuh langkah `appops` di atas.
+aplikasi file manager di TV, izinkan *Install unknown apps*, lalu masukkan
+kode pairing dengan remote. Auto-start setelah boot butuh langkah `appops` di atas.
 
 Buka pengaturan lagi: **tekan lama BACK** atau tekan **MENU**. Tombol BACK
 biasa diabaikan supaya tamu tidak keluar dari timer.

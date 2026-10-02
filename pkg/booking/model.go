@@ -113,6 +113,11 @@ type Store interface {
 	// UpdateUser replaces the user with the same username, or returns ErrNotFound.
 	UpdateUser(ctx context.Context, u User) error
 
+	ListDevices(ctx context.Context) ([]Device, error)
+	AddDevice(ctx context.Context, d Device) error
+	// UpdateDevice replaces the device with the same ID, or returns ErrNotFound.
+	UpdateDevice(ctx context.Context, d Device) error
+
 	AddActivity(ctx context.Context, a Activity) error
 	// ListActivity returns audit lines with from <= Time < to.
 	ListActivity(ctx context.Context, from, to time.Time) ([]Activity, error)

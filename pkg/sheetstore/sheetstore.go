@@ -11,6 +11,8 @@
 //	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
+//	Devices:  id | name | room_id | status | token_hash | pair_code_hash |
+//	          pair_expires | created_by | created_at | paired_at | revoked_by
 //
 // Times are written as text in the business time zone ("2006-01-02 15:04"),
 // so the sheet is easy to read and does not depend on the sheet's locale.
@@ -37,6 +39,7 @@ const (
 	BookingsSheet = "Bookings"
 	UsersSheet    = "Users"
 	ActivitySheet = "Activity"
+	DevicesSheet  = "Devices"
 )
 
 // Column headers, in the order used when a tab is created. New columns are
@@ -52,6 +55,10 @@ var (
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
+	DeviceColumns   = []string{
+		"id", "name", "room_id", "status", "token_hash", "pair_code_hash",
+		"pair_expires", "created_by", "created_at", "paired_at", "revoked_by",
+	}
 )
 
 // Schema lists every tab with its columns.
@@ -63,6 +70,7 @@ var Schema = []struct {
 	{BookingsSheet, BookingColumns},
 	{UsersSheet, UserColumns},
 	{ActivitySheet, ActivityColumns},
+	{DevicesSheet, DeviceColumns},
 }
 
 const (
@@ -94,11 +102,12 @@ type table struct {
 	raw   map[string][]any // key -> cells as read
 }
 
-// snapshot is one read of the Rooms, Bookings and Users tabs.
+// snapshot is one read of the Rooms, Bookings, Users and Devices tabs.
 type snapshot struct {
 	rooms    []booking.Room
 	bookings []booking.Booking
 	users    []booking.User
+	devices  []booking.Device
 	tabs     map[string]*table
 }
 
@@ -139,6 +148,22 @@ func (s *Store) ListUsers(ctx context.Context) ([]booking.User, error) {
 		return nil, err
 	}
 	return slices.Clone(snap.users), nil
+}
+
+func (s *Store) ListDevices(ctx context.Context) ([]booking.Device, error) {
+	snap, err := s.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(snap.devices), nil
+}
+
+func (s *Store) AddDevice(ctx context.Context, d booking.Device) error {
+	return s.appendRow(ctx, DevicesSheet, s.deviceValues(d))
+}
+
+func (s *Store) UpdateDevice(ctx context.Context, d booking.Device) error {
+	return s.updateRow(ctx, DevicesSheet, d.ID, s.deviceValues(d))
 }
 
 func (s *Store) AddBooking(ctx context.Context, b booking.Booking) error {
@@ -419,7 +444,7 @@ func (s *Store) invalidate() {
 	s.mu.Unlock()
 }
 
-// load reads Rooms, Bookings, Users and the Activity header in one API call,
+// load reads Rooms, Bookings, Users, Devices and the Activity header in one API call,
 // or returns the cached snapshot.
 func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	s.mu.Lock()
@@ -429,18 +454,18 @@ func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	}
 
 	resp, err := s.api.Spreadsheets.Values.BatchGet(s.spreadsheetID).
-		Ranges(RoomsSheet, BookingsSheet, UsersSheet, ActivitySheet+"!1:1").
+		Ranges(RoomsSheet, BookingsSheet, UsersSheet, ActivitySheet+"!1:1", DevicesSheet).
 		ValueRenderOption("UNFORMATTED_VALUE").
 		DateTimeRenderOption("FORMATTED_STRING").
 		Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("sheets read: %w (jalankan setup sheet jika tab baru belum ada)", err)
 	}
-	if len(resp.ValueRanges) != 4 {
-		return nil, fmt.Errorf("sheets read: expected 4 ranges, got %d", len(resp.ValueRanges))
+	if len(resp.ValueRanges) != 5 {
+		return nil, fmt.Errorf("sheets read: expected 5 ranges, got %d", len(resp.ValueRanges))
 	}
 	v := func(i int) [][]any { return resp.ValueRanges[i].Values }
-	snap, err := s.parse(v(0), v(1), v(2), v(3))
+	snap, err := s.parse(v(0), v(1), v(2), v(3), v(4))
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +477,7 @@ func (s *Store) load(ctx context.Context) (*snapshot, error) {
 	return snap, nil
 }
 
-func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader [][]any) (*snapshot, error) {
+func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader, deviceRows [][]any) (*snapshot, error) {
 	snap := &snapshot{tabs: map[string]*table{}}
 	newTable := func(name string, rows [][]any, want []string) (*table, error) {
 		cols, err := headerIndex(name, rows, want)
@@ -534,6 +559,33 @@ func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader [][]any) (
 	if _, err := newTable(ActivitySheet, activityHeader, ActivityColumns); err != nil {
 		return nil, err
 	}
+
+	dt, err := newTable(DevicesSheet, deviceRows, DeviceColumns)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range deviceRows[1:] {
+		id := cellString(row, dt.cols["id"])
+		if id == "" {
+			continue
+		}
+		d := booking.Device{
+			ID:           id,
+			Name:         cellString(row, dt.cols["name"]),
+			RoomID:       cellString(row, dt.cols["room_id"]),
+			Status:       booking.DeviceStatus(cellString(row, dt.cols["status"])),
+			TokenHash:    cellString(row, dt.cols["token_hash"]),
+			PairCodeHash: cellString(row, dt.cols["pair_code_hash"]),
+			CreatedBy:    cellString(row, dt.cols["created_by"]),
+			RevokedBy:    cellString(row, dt.cols["revoked_by"]),
+		}
+		// A broken timestamp must not stop every TV; treat it as empty.
+		d.PairExpires, _ = s.parseTime(cellString(row, dt.cols["pair_expires"]))
+		d.CreatedAt, _ = s.parseTime(cellString(row, dt.cols["created_at"]))
+		d.PairedAt, _ = s.parseTime(cellString(row, dt.cols["paired_at"]))
+		snap.devices = append(snap.devices, d)
+		remember(dt, id, i, row)
+	}
 	return snap, nil
 }
 
@@ -601,6 +653,22 @@ func (s *Store) bookingValues(b booking.Booking) map[string]any {
 		"cancelled_by":     b.CancelledBy,
 		"confirmed_by":     b.ConfirmedBy,
 		"hold_until":       s.formatTime(b.HoldUntil, minuteLayout),
+	}
+}
+
+func (s *Store) deviceValues(d booking.Device) map[string]any {
+	return map[string]any{
+		"id":             d.ID,
+		"name":           d.Name,
+		"room_id":        d.RoomID,
+		"status":         string(d.Status),
+		"token_hash":     d.TokenHash,
+		"pair_code_hash": d.PairCodeHash,
+		"pair_expires":   s.formatTime(d.PairExpires, secondLayout),
+		"created_by":     d.CreatedBy,
+		"created_at":     s.formatTime(d.CreatedAt, secondLayout),
+		"paired_at":      s.formatTime(d.PairedAt, secondLayout),
+		"revoked_by":     d.RevokedBy,
 	}
 }
 

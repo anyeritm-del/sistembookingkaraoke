@@ -93,6 +93,9 @@ const ACTION_LABEL = {
   "user.create": "User baru",
   "user.update": "Ubah user",
   "user.pin_reset": "Reset PIN user",
+  "device.create": "Kode pairing TV dibuat",
+  "device.pair": "TV dipasangkan",
+  "device.revoke": "TV dicabut",
 };
 
 // ---------- Small DOM helpers ----------
@@ -191,7 +194,7 @@ async function showApp(me) {
 
 // ---------- Tabs ----------
 
-const TABS = ["schedule", "list", "report", "activity", "rooms", "users"];
+const TABS = ["schedule", "list", "report", "activity", "rooms", "users", "devices"];
 
 function selectTab(tab) {
   state.tab = tab;
@@ -225,6 +228,10 @@ async function refresh() {
       break;
     case "users":
       renderUsers(await api("GET", "/api/users"));
+      break;
+    case "devices":
+      state.rooms = await api("GET", "/api/rooms");
+      renderDevices(await api("GET", "/api/devices"));
       break;
   }
 }
@@ -471,6 +478,75 @@ async function saveUser() {
   await refresh();
 }
 
+// ---------- TVs (admin) ----------
+
+const DEVICE_STATUS = { pending: "Menunggu pairing", active: "Aktif", revoked: "Dicabut" };
+
+function renderDevices(list) {
+  const roomName = (id) => (state.rooms.find((r) => r.id === id) || {}).name || id;
+  const now = Date.now();
+  const rows = list.map((d) => {
+    const expired = d.status === "pending" && Date.parse(d.pair_expires) <= now;
+    const status = expired ? "Kode kedaluwarsa" : DEVICE_STATUS[d.status] || d.status;
+    const when = d.status === "active" || d.status === "revoked"
+      ? (Date.parse(d.paired_at) > 0 ? `${ymd(new Date(d.paired_at))} ${hm(new Date(d.paired_at))}` : "")
+      : `kode s/d ${hm(new Date(d.pair_expires))}`;
+    const actions = el("div", { class: "actions" });
+    if (d.status !== "revoked") {
+      actions.append(el("button", {
+        class: "btn small danger", type: "button", text: d.status === "pending" ? "Batalkan kode" : "Cabut",
+        onclick: (e) => run(e.currentTarget, async () => {
+          if (!confirm(`Cabut ${d.name} (${roomName(d.room_id)})? TV ini harus dipairing ulang untuk dipakai lagi.`)) return;
+          await api("POST", `/api/devices/${encodeURIComponent(d.id)}/revoke`, {});
+          flash(`${d.name} dicabut`);
+          await refresh();
+        }),
+      }));
+    }
+    return el("tr", {},
+      td(d.name), td(roomName(d.room_id)),
+      el("td", {}, el("span", { class: `badge ${expired ? "revoked" : d.status}`, text: status })),
+      td(when), td(d.created_by + (d.revoked_by ? `, dicabut ${d.revoked_by}` : "")),
+      el("td", {}, actions));
+  });
+  $("#device-rows").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "6", class: "empty", text: "Belum ada TV yang dipasangkan." }))]));
+}
+
+function openDeviceDialog() {
+  $("#device-form").reset();
+  $("#device-error").hidden = true;
+  $("#device-step1").hidden = false;
+  $("#device-step2").hidden = true;
+  $("#d-room").replaceChildren(...state.rooms.filter((r) => r.active).map((r) => el("option", { value: r.id, text: `${r.name} (${r.id})` })));
+  const suggest = () => { $("#d-name").value = `TV ${$("#d-room").selectedOptions[0]?.textContent.replace(/ \(.*\)$/, "") || ""}`; };
+  $("#d-room").onchange = suggest;
+  suggest();
+  $("#device-dialog").showModal();
+  $("#d-room").focus();
+}
+
+async function createPairing(e) {
+  e.preventDefault();
+  const form = e.currentTarget;
+  if (!form.reportValidity()) return;
+  const btn = form.querySelector("#device-step1 button[type=submit]");
+  btn.disabled = true;
+  $("#device-error").hidden = true;
+  try {
+    const pc = await api("POST", "/api/devices", { room_id: $("#d-room").value, name: $("#d-name").value.trim() });
+    $("#d-show-room").textContent = $("#d-room").selectedOptions[0].textContent;
+    $("#d-code").textContent = pc.code;
+    $("#d-expires").textContent = `Berlaku sampai ${hm(new Date(pc.expires))} WIB (15 menit), sekali pakai.`;
+    $("#device-step1").hidden = true;
+    $("#device-step2").hidden = false;
+    if (state.tab === "devices") refresh().catch(() => {});
+  } catch (err) {
+    showError($("#device-error"), err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- PIN ----------
 
 // pinTarget is null for "change my own PIN", or the user whose PIN an admin resets.
@@ -602,6 +678,12 @@ async function init() {
   });
   $("#new-room").addEventListener("click", () => openRoomDialog(null));
   $("#new-user").addEventListener("click", () => openUserDialog(null));
+  $("#new-device").addEventListener("click", openDeviceDialog);
+  $("#device-form").addEventListener("submit", createPairing);
+  $("#device-dialog").querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => {
+    $("#device-dialog").close();
+    if (state.tab === "devices") refresh().catch(() => {});
+  }));
   $("#change-pin").addEventListener("click", () => openPinDialog(null));
   submitDialog($("#room-dialog"), $("#room-error"), saveRoom);
   submitDialog($("#user-dialog"), $("#user-error"), saveUser);

@@ -134,6 +134,10 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 
 .badge { font-size: .75rem; font-weight: 700; padding: .1rem .5rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .badge.booked { color: var(--info); }
+.badge.active { color: var(--ok); }
+.badge.pending { color: var(--warn); border-style: dashed; }
+.badge.revoked { color: var(--muted); }
+.pair-code { font-size: 3rem; font-weight: 800; letter-spacing: .3em; text-align: center; font-variant-numeric: tabular-nums; margin: .5rem 0; }
 .badge.tentative { color: var(--warn); border-style: dashed; }
 .badge.expired { color: var(--muted); border-style: dashed; text-decoration: line-through; }
 .bk.tentative { border-style: dashed; }

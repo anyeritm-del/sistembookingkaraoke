@@ -28,6 +28,10 @@ var (
 		{"Budi", "Budi S", "Supervisor", "v1$1$AA$AA", true, "2026-10-01 10:00:00", "bad time"},
 	}
 	activityHeader = [][]any{toAny(ActivityColumns)}
+	devicesTab     = [][]any{
+		toAny(DeviceColumns),
+		{"TV-1", "TV Room 1", "R01", "active", "abc", "", "", "admin", "2026-10-02 10:00:00", "2026-10-02 10:05:00", ""},
+	}
 )
 
 func TestParseAndWriteRoundTrip(t *testing.T) {
@@ -42,7 +46,7 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 		"checked_in", float64(100000), float64(150000), "", "2026-10-01 18:55:10", "",
 		"2026-10-01 10:00:00", "2026-10-01 18:55:10", "VIP guest", "sari", "sari", "", "", "budi", "2026-10-01 17:00"}
 
-	snap, err := s.parse(roomsTab, [][]any{header, row, {}}, usersTab, activityHeader)
+	snap, err := s.parse(roomsTab, [][]any{header, row, {}}, usersTab, activityHeader, devicesTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +83,7 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 
 func TestParseUsers(t *testing.T) {
 	s := testStore(t)
-	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader)
+	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,14 +104,33 @@ func TestParseUsers(t *testing.T) {
 	}
 }
 
+func TestParseDevices(t *testing.T) {
+	s := testStore(t)
+	snap, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, usersTab, activityHeader, devicesTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.devices) != 1 {
+		t.Fatalf("devices = %+v", snap.devices)
+	}
+	d := snap.devices[0]
+	if d.ID != "TV-1" || d.RoomID != "R01" || d.Status != booking.DeviceActive || d.TokenHash != "abc" || d.PairedAt.Minute() != 5 {
+		t.Errorf("device = %+v", d)
+	}
+	row := buildRow(s.deviceValues(d), snap.tabs[DevicesSheet].cols, snap.tabs[DevicesSheet].raw["tv-1"])
+	if row[0] != "TV-1" || row[3] != "active" || row[9] != "2026-10-02 10:05:00" {
+		t.Errorf("device row = %v", row)
+	}
+}
+
 func TestParseMissingColumn(t *testing.T) {
 	s := testStore(t)
 	// An old Bookings tab without the *_by columns must ask for setup.
 	old := toAny(BookingColumns[:15])
-	if _, err := s.parse(roomsTab, [][]any{old}, usersTab, activityHeader); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{old}, usersTab, activityHeader, devicesTab); err == nil {
 		t.Fatal("want error for missing columns")
 	}
-	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, nil, activityHeader); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns)}, nil, activityHeader, devicesTab); err == nil {
 		t.Fatal("want error for empty Users tab")
 	}
 }
@@ -115,7 +138,7 @@ func TestParseMissingColumn(t *testing.T) {
 func TestParseBadTime(t *testing.T) {
 	s := testStore(t)
 	row := []any{"BK-1", "R01", "A", "", "besok", "2026-10-01 20:00"}
-	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns), row}, usersTab, activityHeader); err == nil {
+	if _, err := s.parse(roomsTab, [][]any{toAny(BookingColumns), row}, usersTab, activityHeader, devicesTab); err == nil {
 		t.Fatal("want error for bad time")
 	}
 }

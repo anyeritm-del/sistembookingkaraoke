@@ -25,6 +25,14 @@
             style="@style/SetupInput"
             android:inputType="textUri" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/setup_pairing_hint"
+            android:textColor="#C4B5FD"
+            android:textSize="16sp" />
+
         <TextView style="@style/SetupLabel" android:text="@string/setup_room" />
         <EditText
             android:id="@+id/room"

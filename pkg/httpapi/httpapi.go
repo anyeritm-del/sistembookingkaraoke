@@ -35,6 +35,7 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.mux.HandleFunc("POST /api/logout", s.logout)
 	s.mux.HandleFunc("GET /api/me", s.me)
 	s.mux.HandleFunc("GET /api/tv", s.tv)
+	s.mux.HandleFunc("POST /api/tv/pair", s.pair)
 
 	// Every route below needs a login. The service checks the permission
 	// again, so a missing check here cannot open access.
@@ -56,6 +57,9 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.route("POST /api/users", s.createUser)
 	s.route("PUT /api/users/{username}", s.updateUser)
 	s.route("POST /api/users/{username}/pin", s.resetPIN)
+	s.route("GET /api/devices", s.devices)
+	s.route("POST /api/devices", s.createDevice)
+	s.route("POST /api/devices/{id}/revoke", s.revokeDevice)
 	return s
 }
 
@@ -323,9 +327,20 @@ func (s *Server) resetPIN(w http.ResponseWriter, r *http.Request, u booking.User
 
 // ---------- TV ----------
 
-// tv serves the room TV. It needs the TV key, not a staff login, so a TV
-// can run unattended. It only returns the guest name and times.
+// tv serves the room TV without a staff login, so a TV can run unattended.
+// A paired TV sends its own token (X-TV-Token) and gets its room's status.
+// The older way, a shared TV key plus ?room=, still works.
+// It only returns the guest name and times.
 func (s *Server) tv(w http.ResponseWriter, r *http.Request) {
+	if token := r.Header.Get("X-TV-Token"); token != "" {
+		st, err := s.svc.DeviceRoomStatus(r.Context(), token)
+		if errors.Is(err, booking.ErrBadPairCode) {
+			writeError(w, http.StatusUnauthorized, "TV ini dicabut atau belum dipairing; minta kode pairing baru ke admin")
+			return
+		}
+		respond(w, http.StatusOK, st, err)
+		return
+	}
 	key := r.Header.Get("X-TV-Key")
 	if key == "" {
 		key = r.URL.Query().Get("key")
@@ -338,7 +353,63 @@ func (s *Server) tv(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, st, err)
 }
 
+// pair exchanges a 6-digit pairing code for the TV's own token.
+func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Code string `json:"code"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	d, token, err := s.svc.Pair(r.Context(), in.Code, clientIP(r))
+	if errors.Is(err, booking.ErrBadPairCode) {
+		time.Sleep(time.Second) // slow down guessing
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "device": d})
+}
+
+// ---------- Devices (admin) ----------
+
+func (s *Server) devices(w http.ResponseWriter, r *http.Request, u booking.User) {
+	list, err := s.svc.Devices(r.Context(), u)
+	respond(w, http.StatusOK, nonNil(list), err)
+}
+
+func (s *Server) createDevice(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in booking.DeviceInput
+	if !decode(w, r, &in) {
+		return
+	}
+	pc, err := s.svc.CreatePairing(r.Context(), u, in)
+	respond(w, http.StatusCreated, pc, err)
+}
+
+func (s *Server) revokeDevice(w http.ResponseWriter, r *http.Request, u booking.User) {
+	d, err := s.svc.RevokeDevice(r.Context(), u, r.PathValue("id"))
+	respond(w, http.StatusOK, d, err)
+}
+
 // ---------- Helpers ----------
+
+// clientIP returns the caller's address. On Vercel the platform sets
+// X-Real-IP; it is only used for rate limiting, never for access control.
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		first, _, _ := strings.Cut(fwd, ",")
+		return strings.TrimSpace(first)
+	}
+	host, _, _ := strings.Cut(r.RemoteAddr, ":")
+	return host
+}
 
 func (s *Server) dateParam(w http.ResponseWriter, r *http.Request) (time.Time, bool) {
 	return s.parseDate(w, r.URL.Query().Get("date"), s.svc.Now())
@@ -384,7 +455,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, booking.ErrForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, booking.ErrBadLogin):
+	case errors.Is(err, booking.ErrBadLogin), errors.Is(err, booking.ErrBadPairCode):
 		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.Is(err, booking.ErrConflict), errors.Is(err, booking.ErrWrongState):
 		writeError(w, http.StatusConflict, err.Error())

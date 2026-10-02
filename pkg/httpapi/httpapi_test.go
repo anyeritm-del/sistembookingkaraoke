@@ -234,3 +234,58 @@ func TestListAndConfirm(t *testing.T) {
 		t.Errorf("staff cancel confirmed: %d", rec.Code)
 	}
 }
+
+func TestTVPairingOverHTTP(t *testing.T) {
+	s := newTestServer(t)
+	admin := login(t, s, "admin", "112233")
+	rec := do(t, s, "POST", "/api/devices", `{"name":"TV Room 2","room_id":"R02"}`, admin)
+	var pc booking.PairingCode
+	json.Unmarshal(rec.Body.Bytes(), &pc)
+	if rec.Code != 201 || len(pc.Code) != 6 {
+		t.Fatalf("create pairing: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "hash") {
+		t.Errorf("pairing response leaks hashes: %s", rec.Body)
+	}
+
+	rec = do(t, s, "POST", "/api/tv/pair", `{"code":"`+pc.Code+`"}`)
+	var paired struct {
+		Token  string         `json:"token"`
+		Device booking.Device `json:"device"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &paired)
+	if rec.Code != 200 || paired.Token == "" || paired.Device.RoomID != "R02" {
+		t.Fatalf("pair: %d %s", rec.Code, rec.Body)
+	}
+
+	tvGet := func(token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/tv", nil)
+		req.Header.Set("X-TV-Token", token)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return rec
+	}
+	rec = tvGet(paired.Token)
+	var st booking.TVStatus
+	json.Unmarshal(rec.Body.Bytes(), &st)
+	if rec.Code != 200 || st.Room.ID != "R02" {
+		t.Fatalf("tv with token: %d %s", rec.Code, rec.Body)
+	}
+	if rec := tvGet("tvd_wrong"); rec.Code != 401 {
+		t.Errorf("tv wrong token: %d", rec.Code)
+	}
+
+	rec = do(t, s, "GET", "/api/devices", "", admin)
+	if strings.Contains(rec.Body.String(), "hash") || !strings.Contains(rec.Body.String(), `"active"`) {
+		t.Errorf("devices list: %s", rec.Body)
+	}
+	if rec := do(t, s, "POST", "/api/devices/"+paired.Device.ID+"/revoke", "{}", admin); rec.Code != 200 {
+		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
+	}
+	if rec := tvGet(paired.Token); rec.Code != 401 {
+		t.Errorf("tv after revoke: %d", rec.Code)
+	}
+	if rec := do(t, s, "POST", "/api/tv/pair", `{"code":"`+pc.Code+`"}`); rec.Code != 401 {
+		t.Errorf("reuse code: %d", rec.Code)
+	}
+}

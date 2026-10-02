@@ -10,8 +10,8 @@ android {
         applicationId = "com.sentineltech.karaoketv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         // Default server shown on the setup screen; it can be changed on the TV.
         buildConfigField("String", "DEFAULT_SERVER", "\"https://sistembookingkaraoke.vercel.app\"")
     }

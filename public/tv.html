@@ -13,14 +13,21 @@
   <!-- First-time setup: which room this TV belongs to. -->
   <section id="setup" class="setup" hidden>
     <h1>Pengaturan TV</h1>
-    <form id="setup-form">
+    <!-- Normal way: a one-time 6-digit code made by an admin in the TV menu. -->
+    <form id="pair-form">
+      <label for="s-code">Kode pairing (6 angka dari admin, menu TV)</label>
+      <input id="s-code" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+      <button type="submit">Pasangkan TV</button>
+    </form>
+    <p id="setup-error" class="error" role="alert"></p>
+    <button type="button" id="show-legacy" class="link">Cara lama: kode room + TV key</button>
+    <form id="setup-form" hidden>
       <label for="s-room">Kode room (contoh: R01)</label>
       <input id="s-room" name="room" required autocomplete="off" autocapitalize="characters">
       <label for="s-key">TV key</label>
       <input id="s-key" name="key" required autocomplete="off">
       <button type="submit">Simpan</button>
     </form>
-    <p id="setup-error" class="error" role="alert"></p>
   </section>
 
   <main id="screen" hidden>
