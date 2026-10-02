@@ -160,27 +160,57 @@ autoplay browser). Pengaturan tersimpan di TV; buka `/tv?setup=1` untuk mengubah
 
 **Opsi B – Aplikasi Android TV (disarankan untuk Android TV / TV box):**
 suara alarm langsung aktif tanpa tekan tombol, layar tidak mati, dan aplikasi
-terbuka sendiri setelah TV dinyalakan.
+terbuka sendiri setelah TV dinyalakan. Alamat server sudah terisi otomatis.
+
+Build APK rilis (ditandatangani dengan release key; nilai `KARAOKE_TV_*` ada di `.env`):
 
 ```sh
+set -a; . ./.env; set +a
 cd android-tv
-# Opsional: ganti DEFAULT_SERVER di app/build.gradle.kts dengan URL Vercel Anda
-JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
-
-# Pasang ke TV (aktifkan Developer options + USB/Network debugging di TV):
-adb connect <IP-TV>:5555
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-# Izinkan auto-start setelah boot (Android 10+):
-adb shell appops set com.sentineltech.karaoketv SYSTEM_ALERT_WINDOW allow
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleRelease
+# APK: android-tv/app/build/outputs/apk/release/app-release.apk
 ```
 
-Saat pertama dibuka, isi alamat server, kode room, dan TV key.
+> **Simpan cadangan keystore** `~/.config/karaoke-tv/release.jks` beserta
+> password-nya (di `.env`) di tempat aman, misalnya password manager. Android
+> hanya mau memasang update yang ditandatangani dengan key yang sama; jika key
+> hilang, aplikasi di setiap TV harus di-uninstall dulu sebelum versi baru dipasang.
+
+Pasang ke TV:
+
+1. Di TV: *Settings → Device Preferences → About*, klik **Build** 7 kali untuk
+   membuka Developer options. Lalu *Developer options →* aktifkan **USB debugging**
+   / **Network debugging (ADB)**. Catat IP TV (*Settings → Network*).
+2. Dari komputer di jaringan yang sama:
+
+   ```sh
+   adb connect <IP-TV>:5555          # setujui prompt "Allow debugging" di TV
+   adb install -r android-tv/app/build/outputs/apk/release/app-release.apk
+   # Izinkan auto-start setelah TV dinyalakan (Android 10+):
+   adb shell appops set com.sentineltech.karaoketv SYSTEM_ALERT_WINDOW allow
+   adb shell monkey -p com.sentineltech.karaoketv 1   # buka aplikasinya
+   ```
+
+3. Layar **Pengaturan TV** muncul. Alamat server sudah terisi. Isi kode room
+   (mis. `R01`). Untuk TV key yang panjang, arahkan kursor ke kolom TV key
+   lalu ketik dari komputer:
+
+   ```sh
+   set -a; . ./.env; set +a
+   adb shell input text "$TV_KEY"
+   ```
+
+   Pilih **Simpan dan mulai**.
+
+Tanpa adb (mis. TV tanpa Developer options): salin APK ke flashdisk, buka dengan
+aplikasi file manager di TV, izinkan *Install unknown apps*, lalu isi pengaturan
+dengan remote. Auto-start setelah boot butuh langkah `appops` di atas.
+
 Buka pengaturan lagi: **tekan lama BACK** atau tekan **MENU**. Tombol BACK
 biasa diabaikan supaya tamu tidak keluar dari timer.
 
-Untuk APK rilis (ditandatangani), buat keystore dan tambahkan `signingConfigs`
-di `app/build.gradle.kts`; simpan keystore di luar repo.
+Update aplikasi: naikkan `versionCode` di `android-tv/app/build.gradle.kts`,
+build ulang, lalu `adb install -r` lagi (pengaturan di TV tetap tersimpan).
 
 ---
 
