@@ -1,4 +1,4 @@
-# Sistem Booking Room Karaoke
+# Hong Kong Karaoke — Sistem Booking Room
 
 Booking room karaoke untuk staf/kasir, berjalan di **Vercel** (Go serverless),
 data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
@@ -11,6 +11,20 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 | Aturan bisnis | [pkg/booking](pkg/booking) | Harga, cek bentrok, status, laporan |
 | Penyimpanan | [pkg/sheetstore](pkg/sheetstore) | Google Sheets API |
 | Aplikasi Android TV | [android-tv/](android-tv) | APK WebView fullscreen, auto-start saat TV nyala |
+
+## Tampilan
+
+- Halaman staf: gaya terang dengan warna brand navy `#1E3A8A`, font Inter,
+  menu di sidebar kiri (di HP menjadi menu lipat lewat tombol ☰).
+- **Jadwal** punya dua tampilan (pilihan tersimpan di browser):
+  - **Timeline**: baris per room, kolom per jam (default 10:00–02:00, melebar
+    otomatis), garis merah = sekarang. Klik blok untuk detail dan aksi; klik
+    area kosong untuk booking baru di room dan jam itu (dibulatkan ke 30 menit).
+  - **Kartu**: tampilan per room seperti sebelumnya.
+- Layar TV tetap gelap (navy) agar tidak menyilaukan di ruangan karaoke, dengan
+  logo dan nama Hong Kong Karaoke.
+- Nama dan warna brand ada di `public/index.html`, `public/tv.html`,
+  `public/css/app.css` (`--brand`) dan `public/css/tv.css`.
 
 ## Role dan hak akses
 

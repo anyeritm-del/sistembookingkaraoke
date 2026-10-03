@@ -1,9 +1,11 @@
-/* Room TV display. Always dark; sized in vw/vh so it fits 720p to 4K. */
+/* Room TV display — Hong Kong Karaoke. Dark navy so it does not glare in a
+   dark room; sized in vw/vh so it fits 720p to 4K. */
 :root {
-  --bg: #0b0b12;
-  --text: #f5f5fa;
-  --muted: #a3a3b8;
-  --accent: #a78bfa;
+  --bg: #0a1430;
+  --text: #f5f7ff;
+  --muted: #a9b6dc;
+  --accent: #93b4ff;
+  --brand: #1e3a8a;
   --warn: #f59e0b;
   --danger: #ef4444;
 }
@@ -11,8 +13,8 @@
 html, body { height: 100%; }
 body {
   margin: 0; overflow: hidden;
-  background: var(--bg); color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(120% 90% at 50% 0%, #15275e 0%, var(--bg) 60%) fixed var(--bg); color: var(--text);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   transition: background-color .4s;
 }
 [hidden] { display: none !important; }
@@ -71,3 +73,13 @@ body.overtime.snoozed { animation: none; background: #3b0d0d; }
 
 .unlock { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .85); }
 .unlock button { font-size: 4vh; padding: 3vh 4vw; border-color: var(--accent); }
+
+/* Brand header */
+.brand { display: flex; align-items: center; gap: 1.6vh; }
+.brand .logo { width: 6.5vh; height: 6.5vh; flex: none; }
+.brand-name { display: block; font-size: 2.2vh; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.brand .room-name { display: block; font-size: 4vh; font-weight: 800; color: var(--text); letter-spacing: 0; }
+.welcome-sub { font-size: 4vh; color: var(--accent); font-weight: 600; margin-top: 1vh !important; }
+.setup-brand { color: var(--accent); font-weight: 700; margin: -.5vh 0 2vh; }
+.progress { background: rgba(147, 180, 255, .15); }
+.countdown { letter-spacing: -.02em; }

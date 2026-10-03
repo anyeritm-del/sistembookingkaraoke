@@ -180,7 +180,13 @@ function applySession(me) {
   state.user = me.user;
   state.perms = new Set(me.permissions || []);
   state.tz = me.timezone || state.tz;
-  $("#who-am-i").textContent = `${me.user.name} · ${ROLE_LABEL[me.user.role] || me.user.role}`;
+  const roleText = ROLE_LABEL[me.user.role] || me.user.role;
+  $("#who-am-i").textContent = `${me.user.name} · ${roleText}`;
+  $("#who-name").textContent = me.user.name;
+  $("#who-role").textContent = roleText;
+  $("#avatar").textContent = me.user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  // Hide the "Pengaturan" heading when this user has none of those menus.
+  $("#nav-admin-heading").hidden = !["rooms.manage", "users.manage", "devices.manage"].some(can);
   document.querySelectorAll("[data-perm]").forEach((node) => { node.hidden = !can(node.dataset.perm); });
 }
 
@@ -207,6 +213,8 @@ function selectTab(tab) {
     $(`#tab-${name}`).setAttribute("aria-selected", String(name === tab));
     $(`#${name}-view`).hidden = name !== tab;
   }
+  $("#page-title").textContent = $(`#tab-${tab} span`).textContent;
+  setNav(false);
   // The top date picker only matters for these tabs; the list has its own range.
   $("#date").hidden = !["schedule", "activity"].includes(tab);
   refresh().catch((err) => flash(err.message, "error"));
@@ -247,7 +255,115 @@ async function refresh() {
 
 // ---------- Schedule ----------
 
+// ---------- Mobile menu ----------
+
+function setNav(open) {
+  const shell = $("#app-view");
+  const wasOpen = shell.classList.contains("nav-open");
+  shell.classList.toggle("nav-open", open);
+  $("#sidebar-backdrop").hidden = !open;
+  $("#menu-btn").setAttribute("aria-expanded", String(open));
+  if (open) $("#sidebar .nav-item[aria-selected=true]")?.focus();
+  else if (wasOpen) $("#menu-btn").focus();
+}
+
+// ---------- Schedule: timeline or cards ----------
+
+const VIEW_KEY = "karaoke-schedule-view";
+let scheduleView = (() => { try { return localStorage.getItem(VIEW_KEY) || "timeline"; } catch { return "timeline"; } })();
+
+function setScheduleView(view) {
+  scheduleView = view;
+  try { localStorage.setItem(VIEW_KEY, view); } catch { /* storage blocked */ }
+  $("#view-timeline").setAttribute("aria-pressed", String(view === "timeline"));
+  $("#view-cards").setAttribute("aria-pressed", String(view === "cards"));
+  $("#timeline-wrap").hidden = view !== "timeline";
+  $("#rooms").hidden = view !== "cards";
+  if (state.user && state.date) renderRooms();
+}
+
+// tzOffset returns the business time zone's UTC offset in ms at instant t.
+function tzOffset(t) {
+  const p = parts(new Date(t));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000;
+}
+
+// dayStart returns the instant of 00:00 of a YYYY-MM-DD day in the business zone.
+function dayStart(day) {
+  const utc = Date.parse(`${day}T00:00:00Z`);
+  return utc - tzOffset(utc);
+}
+
+const HOUR = 3_600_000;
+
+function renderTimeline() {
+  const start0 = dayStart(state.date);
+  const now = Date.now();
+  const shown = state.bookings.filter((b) => b.status !== "cancelled");
+  // Default window 10:00 to 02:00 next day, widened to fit the bookings.
+  let from = start0 + 10 * HOUR, to = start0 + 26 * HOUR;
+  for (const b of shown) {
+    from = Math.min(from, Date.parse(b.start));
+    to = Math.max(to, Date.parse(b.end));
+  }
+  from = Math.max(start0 - 6 * HOUR, Math.floor((from - start0) / HOUR) * HOUR + start0);
+  to = Math.min(start0 + 34 * HOUR, Math.ceil((to - start0) / HOUR) * HOUR + start0);
+  const span = to - from, hours = span / HOUR;
+  const pct = (t) => `${((Math.min(Math.max(t, from), to) - from) / span) * 100}%`;
+
+  const head = el("div", { class: "tl-hours" });
+  for (let h = 0; h < hours; h++) {
+    const label = hm(new Date(from + h * HOUR));
+    head.append(el("div", { class: "tl-hour", style: `left:${(h / hours) * 100}%`, text: label }));
+  }
+  const grid = el("div", { class: "tl-grid", style: `--hours:${hours}` }, el("div", { class: "tl-corner" }), head);
+
+  for (const room of state.rooms.filter((r) => r.active)) {
+    const track = el("div", { class: `tl-track${can("booking.create") ? " can-create" : ""}`, style: `--hours:${hours}`, "data-room": room.id });
+    for (const b of shown.filter((x) => x.room_id === room.id)) {
+      const bs = Date.parse(b.start), be = Date.parse(b.end);
+      if (be <= from || bs >= to) continue;
+      let st = statusOf(b);
+      if (st === "checked_in" && be <= now) st = "late";
+      const block = el("button", {
+        type: "button", class: `tl-block ${st}`,
+        style: `left:${pct(bs)};width:calc(${pct(be)} - ${pct(bs)})`,
+        title: `${b.customer_name} · ${hm(new Date(bs))}–${hm(new Date(be))} · ${statusText(b)}`,
+        "aria-label": `${room.name}: ${b.customer_name}, ${hm(new Date(bs))} sampai ${hm(new Date(be))}, ${statusText(b)}`,
+        onclick: (e) => { e.stopPropagation(); openDetail(b); },
+      }, el("b", { text: b.customer_name }), el("span", { text: `${hm(new Date(bs))}–${hm(new Date(be))}` }));
+      track.append(block);
+    }
+    if (now > from && now < to && state.date === ymd(new Date(now))) {
+      track.append(el("div", { class: "tl-now", style: `left:${pct(now)}`, "aria-hidden": "true" }));
+    }
+    if (can("booking.create")) {
+      // Click on an empty spot: new booking in this room at that half hour.
+      track.addEventListener("click", (e) => {
+        const r = track.getBoundingClientRect();
+        const t = from + ((e.clientX - r.left) / r.width) * span;
+        const half = Math.floor((t - start0) / (HOUR / 2)) * (HOUR / 2) + start0;
+        openBookingDialog({ roomId: room.id, start: new Date(half) });
+      });
+    }
+    grid.append(
+      el("div", { class: "tl-room" }, el("b", { text: room.name || room.id }), el("span", { text: roomRateLabel(room) })),
+      track);
+  }
+  $("#timeline").replaceChildren(grid);
+}
+
+function openDetail(b) {
+  $("#detail-title").textContent = `${b.customer_name} · ${(state.rooms.find((r) => r.id === b.room_id) || {}).name || b.room_id}`;
+  $("#detail-body").replaceChildren(bookingItem(b));
+  $("#detail-dialog").showModal();
+}
+
 function renderRooms() {
+  if (scheduleView === "timeline") {
+    renderTimeline();
+    return;
+  }
   const now = Date.now();
   const isToday = state.date === ymd(new Date());
   const cards = state.rooms.filter((r) => r.active).map((room) => {
@@ -335,6 +451,7 @@ function bookingItem(b) {
 
 async function doAction(b, action, body, okText) {
   await api("POST", `/api/bookings/${encodeURIComponent(b.id)}/${action}`, body ?? {});
+  if ($("#detail-dialog").open) $("#detail-dialog").close();
   flash(okText);
   await Promise.all([refresh(), loadMonitor().catch(() => {})]);
 }
@@ -509,7 +626,7 @@ function renderReport(rep) {
     tile("Jam terpakai", fmtDuration(rep.minutes)),
     tile("Selesai", String(rep.finished)),
     tile("Sedang dipakai", String(rep.checked_in)),
-    tile("Confirm, belum check-in", String(rep.booked)),
+    tile("Belum check-in", String(rep.booked)),
     tile("Tentative", String(rep.tentative)),
     tile("Batal", String(rep.cancelled)),
   );
@@ -803,7 +920,8 @@ async function savePin() {
 
 // ---------- Booking dialog ----------
 
-function openBookingDialog() {
+// openBookingDialog opens the form; the timeline passes a room and start time.
+function openBookingDialog(prefill = {}) {
   const form = $("#booking-form");
   form.reset();
   $("#f-kind-hint").hidden = true;
@@ -815,9 +933,11 @@ function openBookingDialog() {
   $("#f-duration").replaceChildren(...durations);
   $("#f-duration").value = "60";
 
-  // Default start: now on today, or 19:00 on another day.
+  // Default start: the clicked time, else now on today, or 19:00 on another day.
   const now = new Date();
-  $("#f-start").value = state.date === ymd(now) ? localInput(now) : `${state.date}T19:00`;
+  if (prefill.roomId) $("#f-room").value = prefill.roomId;
+  $("#f-start").value = prefill.start ? localInput(prefill.start)
+    : state.date === ymd(now) ? localInput(now) : `${state.date}T19:00`;
   updateTotal();
   $("#booking-dialog").showModal();
   $("#f-name").focus();
@@ -916,7 +1036,14 @@ async function init() {
     if (!f.reportValidity()) return;
     run(e.currentTarget, () => download(`/api/export/bookings.csv?${new URLSearchParams(new FormData(f))}`));
   });
-  $("#new-booking").addEventListener("click", openBookingDialog);
+  $("#new-booking").addEventListener("click", () => openBookingDialog());
+  $("#menu-btn").addEventListener("click", () => setNav(!$("#app-view").classList.contains("nav-open")));
+  $("#sidebar-backdrop").addEventListener("click", () => setNav(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#app-view").classList.contains("nav-open")) setNav(false); });
+  $("#view-timeline").addEventListener("click", () => setScheduleView("timeline"));
+  $("#view-cards").addEventListener("click", () => setScheduleView("cards"));
+  $("#detail-close").addEventListener("click", () => $("#detail-dialog").close());
+  setScheduleView(scheduleView);
   $("#booking-cancel").addEventListener("click", () => $("#booking-dialog").close());
   $("#booking-form").addEventListener("submit", submitBooking);
   $("#f-room").addEventListener("change", updateTotal);

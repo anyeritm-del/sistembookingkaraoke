@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Timer Room</title>
+  <title>Hong Kong Karaoke · Timer Room</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%236d28d9'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E2%99%AA%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap">
   <link rel="stylesheet" href="/css/tv.css">
   <script src="/js/sound.js" defer></script>
   <script src="/js/tv.js" defer></script>
@@ -14,6 +17,7 @@
   <!-- First-time setup: which room this TV belongs to. -->
   <section id="setup" class="setup" hidden>
     <h1>Pengaturan TV</h1>
+    <p class="setup-brand">Hong Kong Karaoke</p>
     <!-- Normal way: a one-time 6-digit code made by an admin in the TV menu. -->
     <form id="pair-form">
       <label for="s-code">Kode pairing (6 angka dari admin, menu TV)</label>
@@ -33,13 +37,17 @@
 
   <main id="screen" hidden>
     <header class="bar">
-      <span id="room-name" class="room-name"></span>
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#1e3a8a"/><path d="M20 9a5 5 0 0 1 5 5v6a5 5 0 0 1-10 0v-6a5 5 0 0 1 5-5z" fill="#fff"/><path d="M12 19a8 8 0 0 0 16 0M20 27v5M15 32h10" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+        <div><span class="brand-name">Hong Kong Karaoke</span><span id="room-name" class="room-name"></span></div>
+      </div>
       <span id="clock" class="clock"></span>
     </header>
 
     <!-- No guest checked in -->
     <section id="idle-view" class="center">
       <p class="welcome">Selamat datang</p>
+      <p class="welcome-sub">di Hong Kong Karaoke</p>
       <p id="idle-next" class="sub"></p>
     </section>
 

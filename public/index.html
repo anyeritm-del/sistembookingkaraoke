@@ -3,59 +3,110 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Booking Karaoke</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%236d28d9'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E2%99%AA%3C/text%3E%3C/svg%3E">
+  <title>Hong Kong Karaoke</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%231E3A8A'/%3E%3Cpath d='M20 9a5 5 0 0 1 5 5v6a5 5 0 0 1-10 0v-6a5 5 0 0 1 5-5z' fill='%23fff'/%3E%3Cpath d='M12 19a8 8 0 0 0 16 0M20 27v5M15 32h10' stroke='%23fff' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="/css/app.css">
   <script src="/js/sound.js"></script>
   <script type="module" src="/js/admin.js"></script>
 </head>
 <body>
   <!-- Login -->
-  <section id="login-view" class="login" hidden>
-    <h1>Booking Karaoke</h1>
-    <p>Masuk dengan akun Anda</p>
-    <form id="login-form">
-      <div class="field">
-        <label for="username">Username</label>
-        <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
-      </div>
-      <div class="field">
-        <label for="pin">PIN</label>
-        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required minlength="6">
-      </div>
-      <p id="login-error" class="msg error" role="alert" hidden></p>
-      <button class="btn primary" type="submit">Masuk</button>
-    </form>
-  </section>
+  <div id="login-view" class="login-page" hidden>
+    <aside class="login-brand" aria-hidden="true">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="currentColor"/><path d="M20 9a5 5 0 0 1 5 5v6a5 5 0 0 1-10 0v-6a5 5 0 0 1 5-5z" fill="#fff"/><path d="M12 19a8 8 0 0 0 16 0M20 27v5M15 32h10" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+      <p class="login-brand-name">Hong Kong Karaoke</p>
+      <p class="login-brand-tag">Sistem booking room &amp; timer TV</p>
+    </aside>
+    <section class="login-card">
+      <h1>Masuk</h1>
+      <p class="muted">Gunakan username dan PIN Anda.</p>
+      <form id="login-form">
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="pin">PIN</label>
+          <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required minlength="6">
+        </div>
+        <p id="login-error" class="msg error" role="alert" hidden></p>
+        <button class="btn primary block" type="submit">Masuk</button>
+      </form>
+    </section>
+  </div>
 
   <!-- App -->
-  <div id="app-view" hidden>
-    <header class="topbar">
-      <h1>Booking Karaoke</h1>
-      <span class="clock" id="clock" aria-live="off"></span>
-      <input id="date" type="date" aria-label="Tanggal">
-      <div class="tabs" role="tablist">
-        <button class="btn" role="tab" id="tab-schedule" aria-selected="true" aria-controls="schedule-view">Jadwal</button>
-        <button class="btn" role="tab" id="tab-list" aria-selected="false" aria-controls="list-view" data-perm="schedule.view">Daftar</button>
-        <button class="btn" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view" data-perm="report.view">Laporan</button>
-        <button class="btn" role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view" data-perm="activity.view">Aktivitas</button>
-        <button class="btn" role="tab" id="tab-rooms" aria-selected="false" aria-controls="rooms-view" data-perm="rooms.manage">Room</button>
-        <button class="btn" role="tab" id="tab-pricing" aria-selected="false" aria-controls="pricing-view" data-perm="rooms.manage">Harga</button>
-        <button class="btn" role="tab" id="tab-users" aria-selected="false" aria-controls="users-view" data-perm="users.manage">User</button>
-        <button class="btn" role="tab" id="tab-devices" aria-selected="false" aria-controls="devices-view" data-perm="devices.manage">TV</button>
+  <div id="app-view" class="shell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="currentColor"/><path d="M20 9a5 5 0 0 1 5 5v6a5 5 0 0 1-10 0v-6a5 5 0 0 1 5-5z" fill="#fff"/><path d="M12 19a8 8 0 0 0 16 0M20 27v5M15 32h10" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><div><p class="brand-name">Hong Kong Karaoke</p><p class="brand-sub">Booking &amp; Timer</p></div></div>
+      <nav class="nav" aria-label="Menu utama">
+        <div role="tablist" aria-orientation="vertical" aria-label="Operasional">
+          <button class="nav-item" role="tab" id="tab-schedule" aria-selected="true" aria-controls="schedule-view"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span>Jadwal</span></button>
+          <button class="nav-item" role="tab" id="tab-list" aria-selected="false" aria-controls="list-view" data-perm="schedule.view"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span>Daftar booking</span></button>
+          <button class="nav-item" role="tab" id="tab-report" aria-selected="false" aria-controls="report-view" data-perm="report.view"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg><span>Laporan</span></button>
+          <button class="nav-item" role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view" data-perm="activity.view"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Aktivitas</span></button>
+        </div>
+        <p class="nav-heading" id="nav-admin-heading">Pengaturan</p>
+        <div role="tablist" aria-orientation="vertical" aria-labelledby="nav-admin-heading">
+          <button class="nav-item" role="tab" id="tab-rooms" aria-selected="false" aria-controls="rooms-view" data-perm="rooms.manage"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-7h6v7"/></svg><span>Room</span></button>
+          <button class="nav-item" role="tab" id="tab-pricing" aria-selected="false" aria-controls="pricing-view" data-perm="rooms.manage"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>Harga</span></button>
+          <button class="nav-item" role="tab" id="tab-users" aria-selected="false" aria-controls="users-view" data-perm="users.manage"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 4a4 4 0 0 1 0 8M22 21a6 6 0 0 0-4-5.6"/></svg><span>User</span></button>
+          <button class="nav-item" role="tab" id="tab-devices" aria-selected="false" aria-controls="devices-view" data-perm="devices.manage"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>TV</span></button>
+        </div>
+      </nav>
+      <div class="sidebar-user">
+        <div class="avatar" id="avatar" aria-hidden="true"></div>
+        <div class="who"><p class="who-name" id="who-name"></p><p class="who-role" id="who-role"></p></div>
+        <span class="visually-hidden" id="who-am-i"></span>
+        <div class="sidebar-user-actions">
+          <button class="btn ghost small" id="change-pin">Ganti PIN</button>
+          <button class="btn ghost small" id="logout">Keluar</button>
+        </div>
       </div>
-      <button class="btn primary" id="new-booking" data-perm="booking.create">+ Booking baru</button>
-      <span class="who-am-i" id="who-am-i"></span>
-      <button class="btn" id="sound-unlock" hidden>🔔 Aktifkan suara alarm</button>
-      <button class="btn" id="change-pin">Ganti PIN</button>
-      <button class="btn" id="logout">Keluar</button>
-    </header>
+    </aside>
+    <button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Tutup menu" hidden></button>
 
-    <main>
+    <div class="content">
+      <header class="topbar">
+        <button class="btn icon menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <h1 class="page-title" id="page-title">Jadwal</h1>
+        <div class="topbar-tools">
+          <input id="date" type="date" aria-label="Tanggal">
+          <span class="clock" id="clock" aria-live="off"></span>
+          <button class="btn" id="sound-unlock" hidden>🔔 Aktifkan suara alarm</button>
+          <button class="btn primary" id="new-booking" data-perm="booking.create">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Booking baru</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
       <p id="flash" class="msg" role="status" aria-live="polite" hidden></p>
 
       <section id="schedule-view" role="tabpanel" aria-labelledby="tab-schedule">
-        <div class="rooms" id="rooms"></div>
+        <div class="toolbar">
+          <div class="segmented" role="group" aria-label="Tampilan jadwal">
+            <button type="button" class="seg" id="view-timeline" aria-pressed="true">Timeline</button>
+            <button type="button" class="seg" id="view-cards" aria-pressed="false">Kartu</button>
+          </div>
+          <ul class="legend" aria-label="Keterangan warna">
+            <li><span class="dot booked"></span>Confirm</li>
+            <li><span class="dot tentative"></span>Tentative</li>
+            <li><span class="dot checked_in"></span>Check-in</li>
+            <li><span class="dot finished"></span>Selesai</li>
+            <li><span class="dot late"></span>Lewat waktu</li>
+          </ul>
+        </div>
+        <div class="card timeline-card" id="timeline-wrap">
+          <div class="timeline" id="timeline"></div>
+          <p class="hint-text tl-hint" data-perm="booking.create">Klik area kosong di baris room untuk membuat booking pada jam itu. Klik blok booking untuk melihat detail dan aksi.</p>
+        </div>
+        <div class="rooms" id="rooms" hidden></div>
       </section>
 
       <section id="list-view" role="tabpanel" aria-labelledby="tab-list" hidden>
@@ -217,7 +268,8 @@
           </table>
         </div>
       </section>
-    </main>
+      </main>
+    </div>
   </div>
 
   <!-- Reminders: rooms with 5 minutes or less left, and rooms past their time -->
@@ -266,6 +318,15 @@
         <button class="btn primary" type="submit" id="booking-submit">Simpan booking</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Booking detail (from the timeline) -->
+  <dialog id="detail-dialog" aria-labelledby="detail-title">
+    <div class="dialog-body">
+      <h2 id="detail-title">Detail booking</h2>
+      <ol class="detail-list" id="detail-body"></ol>
+      <div class="buttons"><button class="btn" type="button" id="detail-close">Tutup</button></div>
+    </div>
   </dialog>
 
   <!-- Room create / edit -->
