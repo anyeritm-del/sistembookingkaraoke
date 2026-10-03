@@ -85,6 +85,7 @@
             <input id="l-q" name="q" type="search" autocomplete="off">
           </div>
           <button class="btn primary" type="submit">Tampilkan</button>
+          <button class="btn" type="button" id="list-export" data-perm="report.export">Unduh CSV</button>
         </form>
         <p class="hint-text" id="list-summary" aria-live="polite"></p>
         <div class="table-wrap">
@@ -98,7 +99,10 @@
       <section id="report-view" role="tabpanel" aria-labelledby="tab-report" hidden>
         <div class="report-head">
           <h2 id="report-title">Laporan harian</h2>
-          <button class="btn no-print" id="print-report">Cetak</button>
+          <div class="buttons no-print">
+            <button class="btn" id="report-export" data-perm="report.export">Unduh CSV</button>
+            <button class="btn" id="print-report">Cetak</button>
+          </div>
         </div>
         <div class="tiles" id="report-tiles"></div>
         <div class="table-wrap">
@@ -160,7 +164,7 @@
           <h2>Kelola user</h2>
           <button class="btn primary" id="new-user">+ User baru</button>
         </div>
-        <p class="hint-text"><b>Staff</b>: booking, check-in, perpanjang, check-out. <b>Supervisor</b>: + batal booking, laporan, aktivitas. <b>Admin</b>: + kelola room dan user.</p>
+        <p class="hint-text"><b>Staff</b>: booking, check-in, perpanjang, check-out. <b>Supervisor</b>: + batal booking, laporan, aktivitas. <b>Admin</b>: + kelola room, harga, user, dan TV. <b>Accounting</b>: hanya melihat jadwal, daftar, laporan, aktivitas, dan unduh CSV; tidak bisa mengubah apa pun.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Username</th><th>Nama</th><th>Role</th><th>Status</th><th></th></tr></thead>
@@ -277,6 +281,7 @@
           <option value="staff">Staff</option>
           <option value="supervisor">Supervisor</option>
           <option value="admin">Admin</option>
+          <option value="accounting">Accounting (lihat saja)</option>
         </select>
       </div>
       <div class="field" id="u-pin-field">

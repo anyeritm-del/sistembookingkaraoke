@@ -28,6 +28,16 @@ func TestPermissionTable(t *testing.T) {
 		{booking.RoleSupervisor, booking.PermManageUsers, false},
 		{booking.RoleAdmin, booking.PermManageRooms, true},
 		{booking.RoleAdmin, booking.PermManageUsers, true},
+		{booking.RoleAccounting, booking.PermViewSchedule, true},
+		{booking.RoleAccounting, booking.PermViewReport, true},
+		{booking.RoleAccounting, booking.PermViewActivity, true},
+		{booking.RoleAccounting, booking.PermExport, true},
+		{booking.RoleAccounting, booking.PermCreateBooking, false},
+		{booking.RoleAccounting, booking.PermCheckOut, false},
+		{booking.RoleAccounting, booking.PermCancelTentative, false},
+		{booking.RoleAccounting, booking.PermManageRooms, false},
+		{booking.RoleStaff, booking.PermExport, false},
+		{booking.RoleSupervisor, booking.PermExport, true},
 		{booking.Role("owner"), booking.PermViewSchedule, false},
 	}
 	for _, c := range cases {

@@ -79,7 +79,7 @@ const statusText = (b) => {
   const st = statusOf(b);
   return st === "tentative" ? `Tentative s/d ${hm(new Date(b.hold_until))}` : STATUS_LABEL[st] || st;
 };
-const ROLE_LABEL = { staff: "Staff", supervisor: "Supervisor", admin: "Admin" };
+const ROLE_LABEL = { staff: "Staff", supervisor: "Supervisor", admin: "Admin", accounting: "Accounting" };
 const ACTION_LABEL = {
   "login": "Login",
   "pin.change": "Ganti PIN sendiri",
@@ -92,6 +92,7 @@ const ACTION_LABEL = {
   "room.create": "Room baru",
   "room.update": "Ubah room",
   "pricing.update": "Ubah harga",
+  "export": "Unduh CSV",
   "user.create": "User baru",
   "user.update": "Ubah user",
   "user.pin_reset": "Reset PIN user",
@@ -384,7 +385,8 @@ function stopMonitor() {
 }
 
 async function loadMonitor() {
-  if (!can("schedule.view")) return;
+  // Reminders are for people who can act on them (extend / check out).
+  if (!can("booking.checkout")) return;
   const today = ymd(new Date(Date.now() + monitor.offset));
   const list = await api("GET", `/api/bookings?date=${today}`);
   monitor.bookings = list.filter((b) => b.status === "checked_in");
@@ -441,6 +443,26 @@ function renderReminders() {
 
 function updateSoundButton() {
   $("#sound-unlock").hidden = !Sound.locked();
+}
+
+// ---------- CSV download ----------
+
+// download fetches a CSV with the session cookie and saves it, so errors
+// show as a message instead of a JSON page.
+async function download(path) {
+  const res = await fetch(path, { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Error ${res.status}`);
+  }
+  const name = (/filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "") || [])[1] || "export.csv";
+  const url = URL.createObjectURL(await res.blob());
+  const a = el("a", { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  flash(`${name} diunduh`);
 }
 
 // ---------- Report ----------
@@ -838,6 +860,12 @@ async function init() {
   });
   for (const name of TABS) $(`#tab-${name}`).addEventListener("click", () => selectTab(name));
   $("#print-report").addEventListener("click", () => window.print());
+  $("#report-export").addEventListener("click", (e) => run(e.currentTarget, () => download(`/api/export/report.csv?date=${state.date}`)));
+  $("#list-export").addEventListener("click", (e) => {
+    const f = $("#list-filter");
+    if (!f.reportValidity()) return;
+    run(e.currentTarget, () => download(`/api/export/bookings.csv?${new URLSearchParams(new FormData(f))}`));
+  });
   $("#new-booking").addEventListener("click", openBookingDialog);
   $("#booking-cancel").addEventListener("click", () => $("#booking-dialog").close());
   $("#booking-form").addEventListener("submit", submitBooking);

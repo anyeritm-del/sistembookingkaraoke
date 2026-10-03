@@ -1,0 +1,132 @@
+package httpapi
+
+import (
+	"encoding/csv"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"karaoke/pkg/booking"
+)
+
+// CSV downloads for accounting. Files are UTF-8 with a byte order mark so
+// Excel shows names correctly, comma separated.
+
+func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u booking.User) {
+	q := r.URL.Query()
+	from, ok := s.parseDate(w, q.Get("from"), s.svc.Now())
+	if !ok {
+		return
+	}
+	to, ok := s.parseDate(w, q.Get("to"), from.AddDate(0, 0, 30))
+	if !ok {
+		return
+	}
+	list, err := s.svc.ExportBookings(r.Context(), u, booking.ListFilter{
+		From: from, To: to, Status: q.Get("status"), Query: q.Get("q"), RoomID: q.Get("room"),
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	rooms := s.roomNames(r)
+	loc := s.svc.Location()
+	ts := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.In(loc).Format("2006-01-02 15:04")
+	}
+	rows := [][]string{{
+		"id", "tanggal", "mulai", "selesai", "durasi_menit", "kode_room", "room", "tamu", "hp",
+		"status", "harga_per_jam", "total", "catatan", "dibuat_oleh", "dikonfirmasi_oleh",
+		"checkin_oleh", "checkout_oleh", "dibatalkan_oleh", "checkin_at", "checkout_at", "dibuat_at",
+	}}
+	for _, b := range list {
+		rows = append(rows, []string{
+			b.ID, b.Start.In(loc).Format(time.DateOnly), b.Start.In(loc).Format("15:04"), b.End.In(loc).Format("15:04"),
+			strconv.Itoa(b.DurationMinutes()), b.RoomID, rooms[b.RoomID], b.CustomerName, b.Phone,
+			statusLabel(b), strconv.FormatInt(b.RatePerHour, 10), strconv.FormatInt(b.TotalPrice, 10), b.Notes,
+			b.CreatedBy, b.ConfirmedBy, b.CheckedInBy, b.CheckedOutBy, b.CancelledBy,
+			ts(b.CheckedInAt), ts(b.CheckedOutAt), ts(b.CreatedAt),
+		})
+	}
+	name := fmt.Sprintf("booking_%s_%s.csv", from.Format("20060102"), to.Format("20060102"))
+	writeCSV(w, name, rows)
+}
+
+func (s *Server) exportReport(w http.ResponseWriter, r *http.Request, u booking.User) {
+	day, ok := s.dateParam(w, r)
+	if !ok {
+		return
+	}
+	rep, err := s.svc.ExportReport(r.Context(), u, day)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	rows := [][]string{{"tanggal", "kode_room", "room", "booking", "menit", "pendapatan"}}
+	for _, rr := range rep.Rooms {
+		rows = append(rows, []string{rep.Date, rr.RoomID, rr.RoomName, strconv.Itoa(rr.Bookings),
+			strconv.Itoa(rr.Minutes), strconv.FormatInt(rr.Revenue, 10)})
+	}
+	rows = append(rows,
+		[]string{rep.Date, "", "TOTAL", strconv.Itoa(rep.Finished + rep.CheckedIn), strconv.Itoa(rep.Minutes), strconv.FormatInt(rep.Revenue, 10)},
+		[]string{},
+		[]string{"selesai", strconv.Itoa(rep.Finished)},
+		[]string{"sedang check-in", strconv.Itoa(rep.CheckedIn)},
+		[]string{"confirm belum check-in", strconv.Itoa(rep.Booked)},
+		[]string{"tentative", strconv.Itoa(rep.Tentative)},
+		[]string{"batal", strconv.Itoa(rep.Cancelled)},
+	)
+	writeCSV(w, "laporan_"+strings.ReplaceAll(rep.Date, "-", "")+".csv", rows)
+}
+
+func (s *Server) roomNames(r *http.Request) map[string]string {
+	names := map[string]string{}
+	if rooms, err := s.svc.Rooms(r.Context()); err == nil {
+		for _, rm := range rooms {
+			names[rm.ID] = rm.Name
+		}
+	}
+	return names
+}
+
+func statusLabel(b booking.Booking) string {
+	switch b.Status {
+	case booking.StatusBooked:
+		return "confirm"
+	case booking.StatusCheckedIn:
+		return "check-in"
+	case booking.StatusFinished:
+		return "selesai"
+	case booking.StatusCancelled:
+		return "cancel"
+	}
+	return string(b.Status)
+}
+
+func writeCSV(w http.ResponseWriter, filename string, rows [][]string) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Write([]byte("\xEF\xBB\xBF")) // UTF-8 BOM for Excel
+	cw := csv.NewWriter(w)
+	for _, row := range rows {
+		for i, cell := range row {
+			row[i] = safeCell(cell)
+		}
+		cw.Write(row)
+	}
+	cw.Flush()
+}
+
+// safeCell stops spreadsheet apps from running a guest name such as
+// "=HYPERLINK(...)" as a formula (CSV injection).
+func safeCell(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
+}

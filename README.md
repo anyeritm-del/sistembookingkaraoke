@@ -14,16 +14,27 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 
 ## Role dan hak akses
 
-| Aksi | Staff | Supervisor | Admin |
-|---|:-:|:-:|:-:|
-| Lihat jadwal & daftar, booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |
-| Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |
-| Batalkan booking Confirm | | ✓ | ✓ |
-| Laporan harian, log aktivitas | | ✓ | ✓ |
-| Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |
-| Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |
-| Kelola TV (buat kode pairing, cabut TV) | | | ✓ |
+| Aksi | Staff | Supervisor | Admin | Accounting |
+|---|:-:|:-:|:-:|:-:|
+| Lihat jadwal & daftar booking | ✓ | ✓ | ✓ | ✓ |
+| Booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |  |
+| Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |  |
+| Batalkan booking Confirm | | ✓ | ✓ |  |
+| Laporan harian, log aktivitas | | ✓ | ✓ | ✓ |
+| Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |  |
+| Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |  |
+| Kelola TV (buat kode pairing, cabut TV) | | | ✓ |  |
+| Unduh CSV (daftar booking, laporan harian) | | ✓ | ✓ | ✓ |
 
+- **Accounting** hanya melihat dan mengunduh: tidak ada tombol aksi, tidak
+  bisa membuat/mengubah booking, room, harga, user, atau TV (server menolak
+  dengan 403), dan tidak mendapat pengingat/alarm. Nomor HP tamu tampil lengkap.
+- **Unduh CSV**: tab Daftar (sesuai filter dan rentang tanggal, maks. 92 hari)
+  dan tab Laporan. File UTF-8, dipisah koma. Sel yang diawali `= + - @` diberi
+  tanda `'` agar tidak dijalankan sebagai rumus di Excel. Setiap unduhan
+  tercatat di Aktivitas. Jika Excel menampilkan semua kolom dalam satu kolom
+  (pengaturan wilayah Indonesia memakai `;`), buka lewat *Data → From Text/CSV*
+  dan pilih pemisah koma, atau buka di Google Sheets.
 - Tabel hak akses ada di satu tempat: [pkg/booking/roles.go](pkg/booking/roles.go).
   Server memeriksanya di setiap request; halaman web hanya menyembunyikan tombol.
 - Role user dibaca ulang dari sheet di setiap request (cache 5 detik), jadi

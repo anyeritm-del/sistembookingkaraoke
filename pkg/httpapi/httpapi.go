@@ -57,6 +57,8 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.route("POST /api/bookings/{id}/cancel", s.action(s.svc.Cancel))
 	s.route("GET /api/report", s.report)
 	s.route("GET /api/activity", s.activity)
+	s.route("GET /api/export/bookings.csv", s.exportBookings)
+	s.route("GET /api/export/report.csv", s.exportReport)
 	s.route("GET /api/users", s.users)
 	s.route("POST /api/users", s.createUser)
 	s.route("PUT /api/users/{username}", s.updateUser)

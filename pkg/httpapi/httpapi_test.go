@@ -289,3 +289,80 @@ func TestTVPairingOverHTTP(t *testing.T) {
 		t.Errorf("reuse code: %d", rec.Code)
 	}
 }
+
+func TestAccountingViewOnlyAndExport(t *testing.T) {
+	s := newTestServer(t)
+	admin := login(t, s, "admin", "112233")
+	for _, u := range []string{
+		`{"username":"ani","name":"Ani Accounting","role":"accounting","pin":"582047"}`,
+		`{"username":"sari","name":"Sari","role":"staff","pin":"693158"}`,
+	} {
+		if rec := do(t, s, "POST", "/api/users", u, admin); rec.Code != 201 {
+			t.Fatalf("create user: %d %s", rec.Code, rec.Body)
+		}
+	}
+	rec := do(t, s, "POST", "/api/bookings",
+		`{"room_id":"R01","customer_name":"=HYPERLINK(\"http://x\")","phone":"+62812","start":"2026-10-01T18:00","duration_minutes":60}`, admin)
+	var b booking.Booking
+	json.Unmarshal(rec.Body.Bytes(), &b)
+	acc := login(t, s, "ani", "582047")
+	staff := login(t, s, "sari", "693158")
+
+	checks := []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"list", "GET", "/api/bookings/list?from=2026-10-01", "", 200},
+		{"day", "GET", "/api/bookings?date=2026-10-01", "", 200},
+		{"report", "GET", "/api/report?date=2026-10-01", "", 200},
+		{"activity", "GET", "/api/activity?date=2026-10-01", "", 200},
+		{"create", "POST", "/api/bookings", `{"room_id":"R02","customer_name":"X","start":"2026-10-01T20:00","duration_minutes":60}`, 403},
+		{"checkin", "POST", "/api/bookings/" + b.ID + "/checkin", "{}", 403},
+		{"extend", "POST", "/api/bookings/" + b.ID + "/extend", `{"minutes":30}`, 403},
+		{"cancel", "POST", "/api/bookings/" + b.ID + "/cancel", "{}", 403},
+		{"confirm", "POST", "/api/bookings/" + b.ID + "/confirm", "{}", 403},
+		{"users", "GET", "/api/users", "", 403},
+		{"rooms write", "POST", "/api/rooms", `{"id":"R9","name":"x","rate_per_hour":1,"active":true}`, 403},
+		{"pricing write", "PUT", "/api/pricing", `{"rules":[]}`, 403},
+		{"devices", "GET", "/api/devices", "", 403},
+		{"own pin", "POST", "/api/me/pin", `{"old_pin":"582047","new_pin":"628403"}`, 200},
+	}
+	for _, c := range checks {
+		if rec := do(t, s, c.method, c.path, c.body, acc); rec.Code != c.want {
+			t.Errorf("accounting %s: %d, want %d (%s)", c.name, rec.Code, c.want, rec.Body)
+		}
+	}
+
+	rec = do(t, s, "GET", "/api/export/bookings.csv?from=2026-10-01&to=2026-10-01", "", acc)
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.HasPrefix(body, "\xEF\xBB\xBF") || !strings.Contains(rec.Header().Get("Content-Disposition"), "booking_20261001_20261001.csv") {
+		t.Fatalf("export bookings: %d %q %s", rec.Code, rec.Header(), body)
+	}
+	if !strings.Contains(body, "id,tanggal,mulai") || !strings.Contains(body, b.ID+",2026-10-01,18:00,19:00,60,R01,Room 01 - Small") {
+		t.Errorf("export rows: %s", body)
+	}
+	if strings.Contains(body, ",=HYPERLINK") || !strings.Contains(body, `'=HYPERLINK`) || !strings.Contains(body, "'+62812") {
+		t.Errorf("formula not neutralised: %s", body)
+	}
+
+	rec = do(t, s, "GET", "/api/export/report.csv?date=2026-10-01", "", acc)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "TOTAL") {
+		t.Errorf("export report: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(t, s, "GET", "/api/export/bookings.csv", "", staff); rec.Code != 403 {
+		t.Errorf("staff export: %d", rec.Code)
+	}
+
+	// Downloads are in the activity log.
+	rec = do(t, s, "GET", "/api/activity?date=2026-10-01", "", admin)
+	if n := strings.Count(rec.Body.String(), `"action":"export"`); n != 2 {
+		t.Errorf("export audit lines = %d: %s", n, rec.Body)
+	}
+	// /api/me tells the page this user has no write permissions.
+	rec = do(t, s, "GET", "/api/me", "", acc)
+	for _, p := range []string{"booking.create", "booking.checkout", "booking.cancel"} {
+		if strings.Contains(rec.Body.String(), `"`+p+`"`) {
+			t.Errorf("accounting has %s: %s", p, rec.Body)
+		}
+	}
+}

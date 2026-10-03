@@ -5,18 +5,21 @@ import (
 	"time"
 )
 
-// Role is a user's level. Each role has every permission of the roles below it.
+// Role is a user's level. Staff, supervisor and admin each add rights to the
+// one before. Accounting is separate: it can only view and export.
 type Role string
 
 const (
 	RoleStaff      Role = "staff"
 	RoleSupervisor Role = "supervisor"
 	RoleAdmin      Role = "admin"
+	RoleAccounting Role = "accounting"
 )
 
 // Valid reports whether r is a known role.
 func (r Role) Valid() bool {
-	return r == RoleStaff || r == RoleSupervisor || r == RoleAdmin
+	_, ok := permissions[r]
+	return ok
 }
 
 // Permission is one thing a user may do.
@@ -35,6 +38,7 @@ const (
 	PermCancel          Permission = "booking.cancel"
 	PermViewReport      Permission = "report.view"
 	PermViewActivity    Permission = "activity.view"
+	PermExport          Permission = "report.export"
 	PermManageRooms     Permission = "rooms.manage"
 	PermManageUsers     Permission = "users.manage"
 	PermManageDevices   Permission = "devices.manage"
@@ -51,13 +55,18 @@ var permissions = map[Role][]Permission{
 	RoleSupervisor: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity,
+		PermCancel, PermViewReport, PermViewActivity, PermExport,
 	},
 	RoleAdmin: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity,
+		PermCancel, PermViewReport, PermViewActivity, PermExport,
 		PermManageRooms, PermManageUsers, PermManageDevices,
+	},
+	// Accounting can look at everything about bookings and money, and
+	// download it, but cannot change anything.
+	RoleAccounting: {
+		PermViewSchedule, PermViewReport, PermViewActivity, PermExport,
 	},
 }
 
@@ -113,6 +122,7 @@ const (
 	ActUserUpdate    = "user.update"
 	ActUserPINReset  = "user.pin_reset"
 	ActPricingUpdate = "pricing.update"
+	ActExport        = "export"
 	ActDeviceCreate  = "device.create"
 	ActDevicePair    = "device.pair"
 	ActDeviceRevoke  = "device.revoke"

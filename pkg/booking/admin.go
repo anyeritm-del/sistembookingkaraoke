@@ -200,7 +200,7 @@ func (s *Service) CreateUser(ctx context.Context, actor User, in UserInput) (Use
 		return User{}, fmt.Errorf("%w: nama wajib diisi", ErrInvalid)
 	}
 	if !in.Role.Valid() {
-		return User{}, fmt.Errorf("%w: role harus staff, supervisor, atau admin", ErrInvalid)
+		return User{}, fmt.Errorf("%w: role harus staff, supervisor, admin, atau accounting", ErrInvalid)
 	}
 	if err := validPIN(in.PIN); err != nil {
 		return User{}, err
@@ -248,7 +248,7 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, username string, i
 		return User{}, fmt.Errorf("%w: nama wajib diisi", ErrInvalid)
 	}
 	if !in.Role.Valid() {
-		return User{}, fmt.Errorf("%w: role harus staff, supervisor, atau admin", ErrInvalid)
+		return User{}, fmt.Errorf("%w: role harus staff, supervisor, admin, atau accounting", ErrInvalid)
 	}
 
 	s.mu.Lock()
