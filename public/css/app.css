@@ -327,6 +327,23 @@ dialog .row { display: grid; gap: 0 1rem; grid-template-columns: 1fr 1fr; }
 dialog .total { font-size: 1.05rem; font-weight: 700; margin-block: .25rem 1rem; padding: .7rem .9rem; border-radius: var(--radius); background: var(--brand-soft); color: var(--brand); }
 @media (max-width: 480px) { dialog .row { grid-template-columns: 1fr; } }
 
+/* ---------- Sound blocked notices ---------- */
+.sound-chip {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+  border-radius: 999px; padding: .3rem .75rem; font-size: .8rem; font-weight: 500; cursor: pointer;
+}
+.sound-chip:hover { color: var(--text); border-color: var(--border-strong); }
+.sound-blocked {
+  display: grid; gap: .2rem; text-align: start; cursor: pointer;
+  border: 2px solid #fff; border-radius: var(--radius-lg); padding: .85rem 1rem;
+  background: #7f1d1d; color: #fff; box-shadow: 0 10px 30px rgb(15 23 42 / .3);
+  animation: pulse-border 1s steps(1) infinite;
+}
+.sound-blocked b { font-size: 1rem; }
+.sound-blocked span { font-size: .85rem; opacity: .9; }
+@keyframes pulse-border { 50% { border-color: #fca5a5; } }
+@media (prefers-reduced-motion: reduce) { .sound-blocked { animation: none; } }
+
 /* ---------- Reminders ---------- */
 .reminders {
   position: fixed; right: 16px; bottom: 16px; z-index: 20;

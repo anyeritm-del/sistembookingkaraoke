@@ -545,6 +545,15 @@ function renderReminders() {
       el("div", { class: "r-guest", text: `${b.customer_name} · selesai ${hm(new Date(b.end))}` }),
       actions);
   });
+  // Sound blocked while something needs attention: a loud notice on top.
+  if (due.length && Sound.locked() && can("booking.checkout")) {
+    cards.unshift(el("button", {
+      type: "button", class: "sound-blocked",
+      onclick: () => { Sound.unlock(() => { Sound.warning(); updateSoundButton(); renderReminders(); }); },
+    },
+    el("b", { text: "🔇 Alarm tidak berbunyi" }),
+    el("span", { text: "Suara diblokir browser. Klik di sini untuk mengaktifkan." })));
+  }
   $("#reminders").replaceChildren(...cards);
 
   if (alarmNeeded && now - monitor.lastAlarm >= ALARM_EVERY_MS) {
@@ -558,8 +567,10 @@ function renderReminders() {
   updateSoundButton();
 }
 
+// The small header chip shows while sound is blocked; only for people who
+// get alarms (accounting does not).
 function updateSoundButton() {
-  $("#sound-unlock").hidden = !Sound.locked();
+  $("#sound-unlock").hidden = !(Sound.locked() && can("booking.checkout"));
 }
 
 // ---------- CSV download ----------
@@ -1073,7 +1084,8 @@ async function init() {
 
   // Browsers allow sound only after a click; any click on the page unlocks it.
   document.addEventListener("click", () => { if (Sound.locked()) Sound.unlock(updateSoundButton); });
-  $("#sound-unlock").addEventListener("click", () => { Sound.unlock(updateSoundButton); Sound.warning(); });
+  // Play the chime once so staff hear that sound now works.
+  $("#sound-unlock").addEventListener("click", () => { Sound.unlock(() => { Sound.warning(); updateSoundButton(); renderReminders(); }); });
 
   try {
     const me = await api("GET", "/api/me");

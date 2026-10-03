@@ -133,8 +133,15 @@ staf memantau semua room yang sedang check-in hari ini (tiap 15 detik).
 - Waktu habis: kartu merah berkedip dan sirene tiap 2,5 detik sampai staf
   check-out, perpanjang, atau menekan **Senyapkan**.
 - Judul tab browser berkedip `⏰ (2) Hampir habis` agar terlihat dari jendela lain.
-- Browser hanya mengizinkan suara setelah ada klik. Setelah login suara langsung
-  aktif; jika halaman dibuka ulang, tekan **🔔 Aktifkan suara alarm** atau klik di mana saja.
+- Browser hanya mengizinkan suara setelah ada klik, dan izin itu hilang setiap
+  halaman dibuka ulang. Setelah login suara langsung aktif. Setelah refresh,
+  header menampilkan **🔇 Suara nonaktif** (klik di mana saja untuk
+  mengaktifkan); jika saat itu ada room yang hampir habis atau lewat waktu,
+  muncul peringatan merah **"Alarm tidak berbunyi"** di atas kartu pengingat.
+  Agar PC kasir tidak perlu klik setelah refresh, buka sistem lewat shortcut:
+  `chrome.exe --autoplay-policy=no-user-gesture-required --app=https://sistembookingkaraoke.vercel.app`
+  (tutup semua jendela Chrome dulu), atau minta IT menambahkan alamat ini ke
+  kebijakan Chrome/Edge `AutoplayAllowlist`.
 - Biarkan tab halaman staf tetap terbuka. Browser bisa memperlambat timer di tab
   yang lama tidak dilihat, sehingga bunyi bisa tertunda hingga ±1 menit; kartu
   tetap tepat saat tab dibuka.
