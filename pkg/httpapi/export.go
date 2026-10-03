@@ -58,30 +58,44 @@ func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u bookin
 }
 
 func (s *Server) exportReport(w http.ResponseWriter, r *http.Request, u booking.User) {
-	day, ok := s.dateParam(w, r)
+	from, to, ok := s.reportRange(w, r)
 	if !ok {
 		return
 	}
-	rep, err := s.svc.ExportReport(r.Context(), u, day)
+	rep, err := s.svc.ExportReport(r.Context(), u, from, to)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	rows := [][]string{{"tanggal", "kode_room", "room", "booking", "menit", "pendapatan"}}
+	period := rep.From + " s/d " + rep.To
+	itoa, ftoa := strconv.Itoa, func(n int64) string { return strconv.FormatInt(n, 10) }
+	rows := [][]string{
+		{"laporan", period},
+		{},
+		{"per room"},
+		{"kode_room", "room", "booking", "menit", "pendapatan"},
+	}
 	for _, rr := range rep.Rooms {
-		rows = append(rows, []string{rep.Date, rr.RoomID, rr.RoomName, strconv.Itoa(rr.Bookings),
-			strconv.Itoa(rr.Minutes), strconv.FormatInt(rr.Revenue, 10)})
+		rows = append(rows, []string{rr.RoomID, rr.RoomName, itoa(rr.Bookings), itoa(rr.Minutes), ftoa(rr.Revenue)})
+	}
+	rows = append(rows, []string{"", "TOTAL", itoa(rep.Finished + rep.CheckedIn), itoa(rep.Minutes), ftoa(rep.Revenue)},
+		[]string{}, []string{"per hari"}, []string{"tanggal", "booking", "menit", "pendapatan"})
+	for _, d := range rep.Days {
+		rows = append(rows, []string{d.Date, itoa(d.Bookings), itoa(d.Minutes), ftoa(d.Revenue)})
 	}
 	rows = append(rows,
-		[]string{rep.Date, "", "TOTAL", strconv.Itoa(rep.Finished + rep.CheckedIn), strconv.Itoa(rep.Minutes), strconv.FormatInt(rep.Revenue, 10)},
 		[]string{},
-		[]string{"selesai", strconv.Itoa(rep.Finished)},
-		[]string{"sedang check-in", strconv.Itoa(rep.CheckedIn)},
-		[]string{"confirm belum check-in", strconv.Itoa(rep.Booked)},
-		[]string{"tentative", strconv.Itoa(rep.Tentative)},
-		[]string{"batal", strconv.Itoa(rep.Cancelled)},
+		[]string{"selesai", itoa(rep.Finished)},
+		[]string{"sedang check-in", itoa(rep.CheckedIn)},
+		[]string{"confirm belum check-in", itoa(rep.Booked)},
+		[]string{"tentative", itoa(rep.Tentative)},
+		[]string{"batal", itoa(rep.Cancelled)},
 	)
-	writeCSV(w, "laporan_"+strings.ReplaceAll(rep.Date, "-", "")+".csv", rows)
+	name := "laporan_" + strings.ReplaceAll(rep.From, "-", "")
+	if rep.To != rep.From {
+		name += "_" + strings.ReplaceAll(rep.To, "-", "")
+	}
+	writeCSV(w, name+".csv", rows)
 }
 
 func (s *Server) roomNames(r *http.Request) map[string]string {

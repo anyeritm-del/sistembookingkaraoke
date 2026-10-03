@@ -60,7 +60,7 @@ func TestServiceEnforcesPermissions(t *testing.T) {
 	if _, err := f.svc.Cancel(f.ctx, f.staff, b.ID); !errors.Is(err, booking.ErrForbidden) {
 		t.Errorf("staff cancel: %v", err)
 	}
-	if _, err := f.svc.Report(f.ctx, f.staff, f.now); !errors.Is(err, booking.ErrForbidden) {
+	if _, err := f.svc.Report(f.ctx, f.staff, f.now, f.now); !errors.Is(err, booking.ErrForbidden) {
 		t.Errorf("staff report: %v", err)
 	}
 	if _, err := f.svc.CreateRoom(f.ctx, f.sup, booking.RoomInput{ID: "R09", Name: "X", RatePerHour: 1}); !errors.Is(err, booking.ErrForbidden) {

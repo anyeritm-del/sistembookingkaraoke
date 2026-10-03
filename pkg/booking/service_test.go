@@ -262,11 +262,11 @@ func TestReport(t *testing.T) {
 	ok(f.svc.CheckIn(f.ctx, f.sup, b.ID))
 	ok(f.svc.Cancel(f.ctx, f.sup, c.ID))
 
-	rep, err := f.svc.Report(f.ctx, f.sup, at("12:00"))
+	rep, err := f.svc.Report(f.ctx, f.sup, at("12:00"), at("12:00"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Date != "2026-10-01" || rep.Finished != 1 || rep.CheckedIn != 1 || rep.Cancelled != 1 || rep.Booked != 1 {
+	if rep.From != "2026-10-01" || rep.To != "2026-10-01" || rep.Finished != 1 || rep.CheckedIn != 1 || rep.Cancelled != 1 || rep.Booked != 1 {
 		t.Errorf("counts: %+v", rep)
 	}
 	if rep.Revenue != 400000 || rep.Minutes != 180 {
@@ -314,5 +314,57 @@ func mustOK(t *testing.T) func(booking.Booking, error) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestReportRange(t *testing.T) {
+	f := newFixture(t) // Thursday 2026-10-01 18:00
+	mk := func(room string, day time.Time, minutes int) booking.Booking {
+		b, err := f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: room, CustomerName: "X", Start: day, DurationMinutes: minutes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	thu := mk("R01", at("19:00"), 60)                   // 100000
+	sat := mk("R02", at("20:00").AddDate(0, 0, 2), 120) // 300000, Saturday
+	mk("R01", at("20:00").AddDate(0, 0, 5), 60)         // next Tuesday, outside the range
+	f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R02", CustomerName: "T", Start: at("21:00"), DurationMinutes: 60, Tentative: true})
+
+	// Make them count as sales: check in and out on their day.
+	f.now = at("19:05")
+	f.svc.CheckIn(f.ctx, f.sup, thu.ID)
+	f.svc.CheckOut(f.ctx, f.sup, thu.ID)
+	f.now = at("20:05").AddDate(0, 0, 2)
+	f.svc.CheckIn(f.ctx, f.sup, sat.ID)
+
+	rep, err := f.svc.Report(f.ctx, f.sup, at("00:00"), at("00:00").AddDate(0, 0, 3)) // Thu..Sun
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.From != "2026-10-01" || rep.To != "2026-10-04" || len(rep.Days) != 4 {
+		t.Fatalf("range: %s..%s days %d", rep.From, rep.To, len(rep.Days))
+	}
+	if rep.Revenue != 400000 || rep.Minutes != 180 || rep.Finished != 1 || rep.CheckedIn != 1 || rep.Tentative != 1 {
+		t.Errorf("totals: %+v", rep)
+	}
+	wantDays := map[string]int64{"2026-10-01": 100000, "2026-10-02": 0, "2026-10-03": 300000, "2026-10-04": 0}
+	for _, d := range rep.Days {
+		if d.Revenue != wantDays[d.Date] {
+			t.Errorf("day %s revenue %d, want %d", d.Date, d.Revenue, wantDays[d.Date])
+		}
+	}
+	if rep.Rooms[0].Revenue != 100000 || rep.Rooms[1].Revenue != 300000 {
+		t.Errorf("rooms: %+v", rep.Rooms)
+	}
+
+	if _, err := f.svc.Report(f.ctx, f.sup, at("12:00"), at("12:00").AddDate(0, 0, -1)); !errors.Is(err, booking.ErrInvalid) {
+		t.Errorf("reversed range: %v", err)
+	}
+	if _, err := f.svc.Report(f.ctx, f.sup, at("12:00"), at("12:00").AddDate(0, 0, 92)); !errors.Is(err, booking.ErrInvalid) {
+		t.Errorf("93 days: %v", err)
+	}
+	if _, err := f.svc.Report(f.ctx, f.sup, at("12:00"), at("12:00").AddDate(0, 0, 91)); err != nil {
+		t.Errorf("92 days: %v", err)
 	}
 }

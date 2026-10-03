@@ -308,12 +308,28 @@ func (s *Server) action(fn func(ctx context.Context, actor booking.User, id stri
 }
 
 func (s *Server) report(w http.ResponseWriter, r *http.Request, u booking.User) {
-	day, ok := s.dateParam(w, r)
+	from, to, ok := s.reportRange(w, r)
 	if !ok {
 		return
 	}
-	rep, err := s.svc.Report(r.Context(), u, day)
+	rep, err := s.svc.Report(r.Context(), u, from, to)
 	respond(w, http.StatusOK, rep, err)
+}
+
+// reportRange reads ?from=&to= (YYYY-MM-DD). The older ?date= gives one day;
+// nothing gives today.
+func (s *Server) reportRange(w http.ResponseWriter, r *http.Request) (time.Time, time.Time, bool) {
+	q := r.URL.Query()
+	day, ok := s.parseDate(w, q.Get("date"), s.svc.Now())
+	if !ok {
+		return time.Time{}, time.Time{}, false
+	}
+	from, ok := s.parseDate(w, q.Get("from"), day)
+	if !ok {
+		return time.Time{}, time.Time{}, false
+	}
+	to, ok := s.parseDate(w, q.Get("to"), from)
+	return from, to, ok
 }
 
 func (s *Server) activity(w http.ResponseWriter, r *http.Request, u booking.User) {

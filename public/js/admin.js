@@ -208,7 +208,7 @@ function selectTab(tab) {
     $(`#${name}-view`).hidden = name !== tab;
   }
   // The top date picker only matters for these tabs; the list has its own range.
-  $("#date").hidden = !["schedule", "report", "activity"].includes(tab);
+  $("#date").hidden = !["schedule", "activity"].includes(tab);
   refresh().catch((err) => flash(err.message, "error"));
 }
 
@@ -222,7 +222,7 @@ async function refresh() {
       await loadList();
       break;
     case "report":
-      renderReport(await api("GET", `/api/report?date=${state.date}`));
+      await loadReport();
       break;
     case "activity":
       renderActivity(await api("GET", `/api/activity?date=${state.date}`));
@@ -467,8 +467,42 @@ async function download(path) {
 
 // ---------- Report ----------
 
+// Quick periods for the report, computed in the business time zone.
+function reportPreset(name) {
+  const today = ymd(new Date());
+  const [y, m, d] = today.split("-").map(Number);
+  const iso = (dt) => dt.toISOString().slice(0, 10);
+  const day = (offset) => iso(new Date(Date.UTC(y, m - 1, d + offset)));
+  switch (name) {
+    case "yesterday": return [day(-1), day(-1)];
+    case "7d": return [day(-6), today];
+    case "month": return [iso(new Date(Date.UTC(y, m - 1, 1))), today];
+    case "lastmonth": return [iso(new Date(Date.UTC(y, m - 2, 1))), iso(new Date(Date.UTC(y, m - 1, 0)))];
+    default: return [today, today];
+  }
+}
+
+function applyPreset() {
+  const name = $("#rp-preset").value;
+  if (name === "custom") return;
+  const [from, to] = reportPreset(name);
+  $("#rp-from").value = from;
+  $("#rp-to").value = to;
+}
+
+const reportQuery = () => new URLSearchParams({ from: $("#rp-from").value, to: $("#rp-to").value });
+
+async function loadReport() {
+  if (!$("#rp-from").value) applyPreset();
+  renderReport(await api("GET", `/api/report?${reportQuery()}`));
+}
+
+const shortDate = (s) => new Intl.DateTimeFormat("id-ID", { weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${s}T00:00:00Z`));
+
 function renderReport(rep) {
-  $("#report-title").textContent = `Laporan harian — ${longDate(rep.date)}`;
+  $("#report-title").textContent = rep.from === rep.to
+    ? `Laporan — ${longDate(rep.from)}`
+    : `Laporan — ${shortDate(rep.from)} s/d ${shortDate(rep.to)} (${rep.days.length} hari)`;
   const tile = (label, value) => el("div", { class: "tile" }, el("div", { class: "label", text: label }), el("div", { class: "value", text: value }));
   $("#report-tiles").replaceChildren(
     tile("Pendapatan", rupiah.format(rep.revenue)),
@@ -483,6 +517,10 @@ function renderReport(rep) {
     td(r.room_name || r.room_id), td(String(r.bookings), "num"), td(fmtDuration(r.minutes), "num"), td(rupiah.format(r.revenue), "num"))));
   $("#report-total").replaceChildren(
     td("Total"), td(String(rep.finished + rep.checked_in), "num"), td(fmtDuration(rep.minutes), "num"), td(rupiah.format(rep.revenue), "num"));
+  // A one-day report needs no per-day table.
+  $("#report-days-block").hidden = rep.days.length < 2;
+  $("#report-days").replaceChildren(...rep.days.map((d) => el("tr", {},
+    td(shortDate(d.date)), td(String(d.bookings), "num"), td(fmtDuration(d.minutes), "num"), td(rupiah.format(d.revenue), "num"))));
 }
 
 // ---------- Booking list ----------
@@ -860,7 +898,19 @@ async function init() {
   });
   for (const name of TABS) $(`#tab-${name}`).addEventListener("click", () => selectTab(name));
   $("#print-report").addEventListener("click", () => window.print());
-  $("#report-export").addEventListener("click", (e) => run(e.currentTarget, () => download(`/api/export/report.csv?date=${state.date}`)));
+  $("#report-export").addEventListener("click", (e) => {
+    if (!$("#report-filter").reportValidity()) return;
+    run(e.currentTarget, () => download(`/api/export/report.csv?${reportQuery()}`));
+  });
+  $("#rp-preset").addEventListener("change", () => {
+    applyPreset();
+    if ($("#rp-preset").value !== "custom") loadReport().catch((err) => flash(err.message, "error"));
+  });
+  for (const id of ["#rp-from", "#rp-to"]) $(id).addEventListener("input", () => { $("#rp-preset").value = "custom"; });
+  $("#report-filter").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (e.currentTarget.reportValidity()) loadReport().catch((err) => flash(err.message, "error"));
+  });
   $("#list-export").addEventListener("click", (e) => {
     const f = $("#list-filter");
     if (!f.reportValidity()) return;

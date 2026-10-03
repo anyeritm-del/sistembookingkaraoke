@@ -25,15 +25,15 @@ func (s *Service) ExportBookings(ctx context.Context, actor User, f ListFilter) 
 	return list, nil
 }
 
-// ExportReport returns the daily report for a download and records it.
-func (s *Service) ExportReport(ctx context.Context, actor User, day time.Time) (DailyReport, error) {
+// ExportReport returns the report for a download and records it.
+func (s *Service) ExportReport(ctx context.Context, actor User, fromDay, toDay time.Time) (SalesReport, error) {
 	if !actor.Can(PermExport) {
-		return DailyReport{}, ErrForbidden
+		return SalesReport{}, ErrForbidden
 	}
-	rep, err := s.Report(ctx, actor, day)
+	rep, err := s.Report(ctx, actor, fromDay, toDay)
 	if err != nil {
-		return DailyReport{}, err
+		return SalesReport{}, err
 	}
-	s.audit(ctx, actor, ActExport, "", "", "laporan harian "+rep.Date)
+	s.audit(ctx, actor, ActExport, "", "", fmt.Sprintf("laporan %s s/d %s", rep.From, rep.To))
 	return rep, nil
 }

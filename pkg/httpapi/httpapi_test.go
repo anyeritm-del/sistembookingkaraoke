@@ -366,3 +366,27 @@ func TestAccountingViewOnlyAndExport(t *testing.T) {
 		}
 	}
 }
+
+func TestReportRangeOverHTTP(t *testing.T) {
+	s := newTestServer(t)
+	admin := login(t, s, "admin", "112233")
+	rec := do(t, s, "GET", "/api/report?from=2026-10-01&to=2026-10-31", "", admin)
+	var rep booking.SalesReport
+	json.Unmarshal(rec.Body.Bytes(), &rep)
+	if rec.Code != 200 || rep.From != "2026-10-01" || rep.To != "2026-10-31" || len(rep.Days) != 31 {
+		t.Fatalf("range report: %d %s..%s %d days", rec.Code, rep.From, rep.To, len(rep.Days))
+	}
+	rec = do(t, s, "GET", "/api/report?date=2026-10-05", "", admin)
+	json.Unmarshal(rec.Body.Bytes(), &rep)
+	if rep.From != "2026-10-05" || rep.To != "2026-10-05" {
+		t.Errorf("legacy ?date=: %s..%s", rep.From, rep.To)
+	}
+	if rec := do(t, s, "GET", "/api/report?from=2026-10-10&to=2026-10-01", "", admin); rec.Code != 400 {
+		t.Errorf("reversed: %d", rec.Code)
+	}
+	rec = do(t, s, "GET", "/api/export/report.csv?from=2026-10-01&to=2026-10-31", "", admin)
+	if rec.Code != 200 || !strings.Contains(rec.Header().Get("Content-Disposition"), "laporan_20261001_20261031.csv") ||
+		!strings.Contains(rec.Body.String(), "per hari") || !strings.Contains(rec.Body.String(), "2026-10-31,0,0,0") {
+		t.Errorf("range csv: %d %v %s", rec.Code, rec.Header(), rec.Body)
+	}
+}

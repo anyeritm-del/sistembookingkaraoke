@@ -137,6 +137,7 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .badge.active { color: var(--ok); }
 .badge.pending { color: var(--warn); border-style: dashed; }
 .badge.revoked { color: var(--muted); }
+.sub-head { font-size: 1rem; margin: 1.5rem 0 .5rem; color: var(--muted); }
 .pricing-buttons { justify-content: space-between; margin-block-start: 1rem; }
 #pricing-rows input, #pricing-rows select { min-width: 7rem; }
 .pair-code { font-size: 3rem; font-weight: 800; letter-spacing: .3em; text-align: center; font-variant-numeric: tabular-nums; margin: .5rem 0; }

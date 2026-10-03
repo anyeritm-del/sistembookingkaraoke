@@ -174,7 +174,7 @@ func TestList(t *testing.T) {
 func TestReportCountsTentative(t *testing.T) {
 	f := newFixture(t)
 	f.tentative(t, f.staff, "R01", "22:00", 60)
-	rep, err := f.svc.Report(f.ctx, f.sup, f.now)
+	rep, err := f.svc.Report(f.ctx, f.sup, f.now, f.now)
 	if err != nil {
 		t.Fatal(err)
 	}

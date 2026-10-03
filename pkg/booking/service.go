@@ -324,7 +324,7 @@ func (s *Service) DayBookings(ctx context.Context, actor User, day time.Time) ([
 	return out, nil
 }
 
-// RoomReport is one room's line in the daily report.
+// RoomReport is one room's line in the report.
 type RoomReport struct {
 	RoomID   string `json:"room_id"`
 	RoomName string `json:"room_name"`
@@ -333,10 +333,20 @@ type RoomReport struct {
 	Revenue  int64  `json:"revenue"`
 }
 
-// DailyReport sums up one day. A booking belongs to the day it starts.
-// Revenue and Minutes count finished and checked-in bookings only.
-type DailyReport struct {
-	Date      string       `json:"date"`
+// DayReport is one day's line in the report.
+type DayReport struct {
+	Date     string `json:"date"`
+	Bookings int    `json:"bookings"`
+	Minutes  int    `json:"minutes"`
+	Revenue  int64  `json:"revenue"`
+}
+
+// SalesReport sums up the days From..To (inclusive). A booking belongs to
+// the day it starts. Revenue and Minutes count finished and checked-in
+// bookings only; the other statuses are only counted.
+type SalesReport struct {
+	From      string       `json:"from"`
+	To        string       `json:"to"`
 	Finished  int          `json:"finished"`
 	CheckedIn int          `json:"checked_in"`
 	Booked    int          `json:"booked"`
@@ -345,28 +355,45 @@ type DailyReport struct {
 	Minutes   int          `json:"minutes"`
 	Revenue   int64        `json:"revenue"`
 	Rooms     []RoomReport `json:"rooms"`
+	Days      []DayReport  `json:"days"`
 }
 
-// Report builds the daily report for the given day.
-func (s *Service) Report(ctx context.Context, actor User, day time.Time) (DailyReport, error) {
+// Report builds the report for the days fromDay..toDay (inclusive, at most
+// MaxListDays). Every day in the range has a line, also days without sales.
+func (s *Service) Report(ctx context.Context, actor User, fromDay, toDay time.Time) (SalesReport, error) {
 	if !actor.Can(PermViewReport) {
-		return DailyReport{}, ErrForbidden
+		return SalesReport{}, ErrForbidden
+	}
+	from, _ := s.dayRange(fromDay)
+	_, to := s.dayRange(toDay)
+	if !to.After(from) {
+		return SalesReport{}, fmt.Errorf("%w: tanggal akhir sebelum tanggal awal", ErrInvalid)
+	}
+	if to.Sub(from) > MaxListDays*24*time.Hour {
+		return SalesReport{}, fmt.Errorf("%w: rentang laporan maksimal %d hari", ErrInvalid, MaxListDays)
 	}
 	rooms, err := s.Rooms(ctx)
 	if err != nil {
-		return DailyReport{}, err
+		return SalesReport{}, err
 	}
 	all, err := s.store.ListBookings(ctx)
 	if err != nil {
-		return DailyReport{}, err
+		return SalesReport{}, err
 	}
-	from, to := s.dayRange(day)
-	rep := DailyReport{Date: from.Format(time.DateOnly)}
+
+	rep := SalesReport{From: from.Format(time.DateOnly), To: to.AddDate(0, 0, -1).Format(time.DateOnly)}
 	order := make([]string, 0, len(rooms))
 	byRoom := map[string]*RoomReport{}
 	for _, r := range rooms {
 		order = append(order, r.ID)
 		byRoom[r.ID] = &RoomReport{RoomID: r.ID, RoomName: r.Name}
+	}
+	byDay := map[string]*DayReport{}
+	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
+		rep.Days = append(rep.Days, DayReport{Date: d.Format(time.DateOnly)})
+	}
+	for i := range rep.Days {
+		byDay[rep.Days[i].Date] = &rep.Days[i]
 	}
 
 	for _, b := range all {
@@ -388,8 +415,11 @@ func (s *Service) Report(ctx context.Context, actor User, day time.Time) (DailyR
 		case StatusCancelled:
 			rep.Cancelled++
 			continue
+		default:
+			continue
 		}
-		rep.Minutes += b.DurationMinutes()
+		minutes := b.DurationMinutes()
+		rep.Minutes += minutes
 		rep.Revenue += b.TotalPrice
 		rr, ok := byRoom[b.RoomID]
 		if !ok { // room was deleted from the sheet
@@ -398,8 +428,13 @@ func (s *Service) Report(ctx context.Context, actor User, day time.Time) (DailyR
 			order = append(order, b.RoomID)
 		}
 		rr.Bookings++
-		rr.Minutes += b.DurationMinutes()
+		rr.Minutes += minutes
 		rr.Revenue += b.TotalPrice
+		if dr := byDay[start.Format(time.DateOnly)]; dr != nil {
+			dr.Bookings++
+			dr.Minutes += minutes
+			dr.Revenue += b.TotalPrice
+		}
 	}
 	for _, id := range order {
 		rep.Rooms = append(rep.Rooms, *byRoom[id])

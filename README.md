@@ -20,11 +20,11 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 | Booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |  |
 | Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |  |
 | Batalkan booking Confirm | | ✓ | ✓ |  |
-| Laporan harian, log aktivitas | | ✓ | ✓ | ✓ |
+| Laporan (harian atau rentang tanggal), log aktivitas | | ✓ | ✓ | ✓ |
 | Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |  |
 | Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |  |
 | Kelola TV (buat kode pairing, cabut TV) | | | ✓ |  |
-| Unduh CSV (daftar booking, laporan harian) | | ✓ | ✓ | ✓ |
+| Unduh CSV (daftar booking, laporan) | | ✓ | ✓ | ✓ |
 
 - **Accounting** hanya melihat dan mengunduh: tidak ada tombol aksi, tidak
   bisa membuat/mengubah booking, room, harga, user, atau TV (server menolak
@@ -90,7 +90,11 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   Perpanjang juga dicek bentrok dengan booking berikutnya.
 - Check-in paling cepat 60 menit sebelum jam mulai, dan hanya jika room tidak
   sedang dipakai tamu lain yang belum check-out.
-- Laporan harian menghitung booking berdasarkan tanggal mulai. Pendapatan =
+- **Laporan** bisa untuk satu hari atau rentang tanggal (maks. 92 hari), dengan
+  pilihan cepat Hari ini / Kemarin / 7 hari terakhir / Bulan ini / Bulan lalu.
+  Menampilkan total, rincian per room, dan rincian per hari; **Unduh CSV**
+  mengikuti rentang yang dipilih.
+- Laporan menghitung booking berdasarkan tanggal mulai. Pendapatan =
   booking `finished` + `checked_in`. Confirm yang belum check-in dan Tentative
   dihitung terpisah, tidak masuk pendapatan.
 
