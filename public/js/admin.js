@@ -1079,7 +1079,7 @@ async function updateTotal() {
     const comp = $("input[name=kind][value=compliment]").checked;
     $("#f-total").classList.toggle("dialog-total-comp", comp);
     $("#f-total").textContent = comp
-      ? `Total: Rp 0 · Compliment (nilai normal ${rupiah.format(q.total_price)})`
+      ? "Total: Rp 0 · Compliment"
       : `Total: ${rupiah.format(q.total_price)} (${rupiah.format(q.rate_per_hour)}/jam)`;
   } catch (err) {
     if (seq === quoteSeq) $("#f-total").textContent = `Harga belum bisa dihitung: ${err.message}`;
