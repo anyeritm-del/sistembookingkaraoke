@@ -327,6 +327,13 @@ dialog .row { display: grid; gap: 0 1rem; grid-template-columns: 1fr 1fr; }
 dialog .total { font-size: 1.05rem; font-weight: 700; margin-block: .25rem 1rem; padding: .7rem .9rem; border-radius: var(--radius); background: var(--brand-soft); color: var(--brand); }
 @media (max-width: 480px) { dialog .row { grid-template-columns: 1fr; } }
 
+/* ---------- WhatsApp ---------- */
+.btn.wa { color: #128c4b; border-color: #a7e3c0; }
+.btn.wa:hover { background: #ecfdf3; border-color: #4ade80; }
+.btn.primary.wa-btn { background: #128c4b; border-color: #128c4b; }
+.btn.primary.wa-btn:hover { background: #0f7a41; border-color: #0f7a41; }
+#wa-text { min-height: 12rem; resize: vertical; line-height: 1.45; }
+
 /* ---------- Sound blocked notices ---------- */
 .sound-chip {
   border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);

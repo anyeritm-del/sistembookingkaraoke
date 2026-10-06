@@ -26,6 +26,22 @@ data disimpan di **Google Sheets**, dan **timer + alarm di TV** setiap room.
 - Nama dan warna brand ada di `public/index.html`, `public/tv.html`,
   `public/css/app.css` (`--brand`) dan `public/css/tv.css`.
 
+## WhatsApp ke tamu
+
+Tombol **WhatsApp** di setiap booking (kartu, detail timeline, tab Daftar,
+kartu pengingat) membuka dialog pratinjau: nomor tujuan, jenis pesan, dan isi
+pesan yang bisa diedit. **Buka WhatsApp** membuka chat tamu di WhatsApp
+Web/Desktop/HP kasir dengan pesan terisi; staf menekan Kirim di WhatsApp.
+Sistem ini tidak mengirim pesan sendiri.
+
+- Jenis pesan: Konfirmasi booking (Tentative menyebut batas tahan),
+  Pengingat sebelum datang, Waktu hampir habis/perpanjangan, Terima kasih.
+  Default dipilih dari status booking.
+- Nomor dirapikan otomatis (`0812…` → `62812…`, `+62 …` → `62…`). Jika kolom HP
+  kosong tetapi nomor terketik di kolom Nama, nomor itu dipakai.
+- Form booking menolak nomor HP di kolom Nama tamu.
+- Tidak tampil untuk Accounting.
+
 ## Role dan hak akses
 
 | Aksi | Staff | Supervisor | Admin | Accounting |

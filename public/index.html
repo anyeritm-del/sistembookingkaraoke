@@ -291,7 +291,8 @@
       </div>
       <div class="field">
         <label for="f-name">Nama tamu</label>
-        <input id="f-name" name="customer_name" required maxlength="80" autocomplete="off">
+        <input id="f-name" name="customer_name" required maxlength="80" autocomplete="off" aria-describedby="f-name-hint">
+        <span class="hint" id="f-name-hint">Nama tamu. Nomor HP diisi di kolom berikutnya.</span>
       </div>
       <div class="field">
         <label for="f-phone">No. HP <span class="hint">(opsional)</span></label>
@@ -327,6 +328,38 @@
       <ol class="detail-list" id="detail-body"></ol>
       <div class="buttons"><button class="btn" type="button" id="detail-close">Tutup</button></div>
     </div>
+  </dialog>
+
+  <!-- WhatsApp message preview: staff check and edit, then WhatsApp opens -->
+  <dialog id="wa-dialog" aria-labelledby="wa-title">
+    <form id="wa-form" method="dialog">
+      <h2 id="wa-title">Kirim WhatsApp ke tamu</h2>
+      <div class="row">
+        <div class="field">
+          <label for="wa-phone">Nomor WhatsApp</label>
+          <input id="wa-phone" type="tel" inputmode="tel" required autocomplete="off" aria-describedby="wa-phone-hint">
+          <span class="hint" id="wa-phone-hint">Contoh 0812… atau 62812…</span>
+        </div>
+        <div class="field">
+          <label for="wa-kind">Jenis pesan</label>
+          <select id="wa-kind">
+            <option value="confirm">Konfirmasi booking</option>
+            <option value="reminder">Pengingat sebelum datang</option>
+            <option value="ending">Waktu hampir habis / perpanjangan</option>
+            <option value="thanks">Terima kasih</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="wa-text">Isi pesan <span class="hint">(bisa diedit)</span></label>
+        <textarea id="wa-text" rows="11" required></textarea>
+      </div>
+      <p id="wa-error" class="msg error" role="alert" hidden></p>
+      <div class="buttons">
+        <button class="btn" type="button" data-close>Batal</button>
+        <button class="btn primary wa-btn" type="submit">Buka WhatsApp</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- Room create / edit -->

@@ -420,7 +420,110 @@ function bookingActions(b) {
       actions.append(act("Check-out", () => confirm(`Check-out ${b.customer_name}? Alarm di TV akan berhenti.`) && doAction(b, "checkout", undefined, `Check-out ${b.customer_name}`), "primary"));
     }
   }
+  // WhatsApp to the guest, for people who serve guests (not view-only roles).
+  if (b.status !== "cancelled" && can("booking.create")) {
+    actions.append(el("button", {
+      class: "btn small wa", type: "button", text: "WhatsApp",
+      title: guestPhone(b) ? `Kirim WhatsApp ke ${guestPhone(b)}` : "Nomor HP tamu belum diisi",
+      onclick: () => openWhatsApp(b),
+    }));
+  }
   return actions;
+}
+
+// ---------- WhatsApp to the guest ----------
+// Opens WhatsApp (web, desktop or phone) with a ready message. Nothing is
+// sent by this system: staff check the text and press send in WhatsApp.
+
+const BRAND = "Hong Kong Karaoke";
+const looksLikePhone = (s) => /^[+\d][\d\s\-.]{7,}$/.test((s || "").trim());
+
+// waNumber turns 0812-3456-789 / +62 812... / 812... into 628123456789.
+function waNumber(raw) {
+  let d = (raw || "").replace(/\D/g, "");
+  if (d.startsWith("0")) d = "62" + d.slice(1);
+  else if (d.startsWith("8")) d = "62" + d;
+  return d.length >= 10 && d.length <= 15 ? d : "";
+}
+
+// guestPhone uses the phone field, or the name when a number was typed there.
+const guestPhone = (b) => (b.phone || (looksLikePhone(b.customer_name) ? b.customer_name : "")).trim();
+const greetName = (b) => (looksLikePhone(b.customer_name) ? "Kak" : `Kak ${b.customer_name}`);
+
+function defaultWaKind(b) {
+  if (b.status === "checked_in") return "ending";
+  if (b.status === "finished") return "thanks";
+  return "confirm";
+}
+
+function waMessage(kind, b) {
+  const start = new Date(b.start), end = new Date(b.end);
+  const room = (state.rooms.find((r) => r.id === b.room_id) || {}).name || b.room_id;
+  const minutes = Math.round((end - start) / 60000);
+  const date = longDate(ymd(start));
+  const today = ymd(start) === ymd(new Date());
+  switch (kind) {
+    case "reminder":
+      return `Halo ${greetName(b)}, kami dari ${BRAND} ingin mengingatkan booking Anda ${today ? "hari ini" : date} pukul ${hm(start)} di ${room} (${fmtDuration(minutes)}).\n\nKami tunggu kedatangannya. Jika ada perubahan, silakan balas pesan ini. Terima kasih!`;
+    case "ending":
+      return `Halo ${greetName(b)}, waktu bernyanyi Anda di ${room} akan selesai pukul ${hm(end)}.\n\nJika ingin menambah waktu (+30 menit atau +1 jam), silakan balas pesan ini atau hubungi kasir. Terima kasih!`;
+    case "thanks":
+      return `Terima kasih ${greetName(b)} sudah bernyanyi di ${BRAND}!\n\n• ${room}, ${date}\n• ${hm(start)}–${hm(end)} (${fmtDuration(minutes)})\n• Total: ${rupiah.format(b.total_price)}\n\nSampai jumpa lagi 🎤`;
+    default: {
+      const lines = [
+        `Halo ${greetName(b)}, terima kasih telah booking di ${BRAND}.`,
+        "",
+        "Detail booking:",
+        `• Room: ${room}`,
+        `• Tanggal: ${date}`,
+        `• Jam: ${hm(start)}–${hm(end)} (${fmtDuration(minutes)})`,
+        `• Total: ${rupiah.format(b.total_price)}`,
+        `• Kode booking: ${b.id}`,
+        "",
+      ];
+      if (b.status === "tentative") {
+        const hold = new Date(b.hold_until);
+        lines.push(`Status: TENTATIVE. Slot kami tahan sampai ${ymd(hold) === ymd(start) ? "" : longDate(ymd(hold)) + " "}pukul ${hm(hold)}. Mohon balas pesan ini untuk konfirmasi.`);
+      } else {
+        lines.push("Status: TERKONFIRMASI.");
+      }
+      lines.push("", "Sampai jumpa!");
+      return lines.join("\n");
+    }
+  }
+}
+
+let waBooking = null;
+
+function openWhatsApp(b) {
+  if ($("#detail-dialog").open) $("#detail-dialog").close();
+  waBooking = b;
+  $("#wa-error").hidden = true;
+  $("#wa-title").textContent = `Kirim WhatsApp · ${looksLikePhone(b.customer_name) ? "tamu" : b.customer_name}`;
+  $("#wa-phone").value = guestPhone(b);
+  $("#wa-kind").value = defaultWaKind(b);
+  $("#wa-text").value = waMessage($("#wa-kind").value, b);
+  $("#wa-dialog").showModal();
+  const first = $("#wa-phone").value ? $("#wa-text") : $("#wa-phone");
+  first.focus();
+  // Start reading the message from the top.
+  $("#wa-text").setSelectionRange(0, 0);
+  $("#wa-text").scrollTop = 0;
+}
+
+function sendWhatsApp(e) {
+  e.preventDefault();
+  const number = waNumber($("#wa-phone").value);
+  if (!number) {
+    showError($("#wa-error"), new Error("Nomor WhatsApp tidak valid. Contoh: 081234567890 atau 6281234567890."));
+    $("#wa-phone").focus();
+    return;
+  }
+  const text = $("#wa-text").value.trim();
+  if (!text) return;
+  window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  $("#wa-dialog").close();
+  flash(`WhatsApp dibuka untuk ${number}. Periksa pesannya lalu tekan Kirim di WhatsApp.`);
 }
 
 const byText = (b) => [
@@ -973,6 +1076,9 @@ async function updateTotal() {
 async function submitBooking(e) {
   e.preventDefault();
   const form = e.currentTarget;
+  // Keep names and phone numbers in their own fields (WhatsApp needs the phone).
+  const name = $("#f-name");
+  name.setCustomValidity(looksLikePhone(name.value) ? "Ini terlihat seperti nomor HP. Isi nama tamu di sini, dan nomor HP di kolom No. HP." : "");
   if (!form.reportValidity()) return;
   const data = Object.fromEntries(new FormData(form));
   data.duration_minutes = Number(data.duration_minutes);
@@ -1060,6 +1166,10 @@ async function init() {
   $("#f-room").addEventListener("change", updateTotal);
   $("#f-duration").addEventListener("change", updateTotal);
   $("#f-start").addEventListener("change", updateTotal);
+  $("#f-name").addEventListener("input", () => $("#f-name").setCustomValidity(""));
+  $("#wa-form").addEventListener("submit", sendWhatsApp);
+  $("#wa-kind").addEventListener("change", () => { if (waBooking) $("#wa-text").value = waMessage($("#wa-kind").value, waBooking); });
+  $("#wa-dialog").querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", () => $("#wa-dialog").close()));
   $("#pricing-add").addEventListener("click", () => $("#pricing-rows").append(pricingRow({ day_type: "weekday", start: "11:00", end: "17:00", rate_per_hour: "" })));
   $("#pricing-form").addEventListener("submit", savePricing);
   for (const r of document.querySelectorAll("input[name=kind]")) {
