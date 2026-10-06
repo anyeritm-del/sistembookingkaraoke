@@ -50,6 +50,7 @@ Sistem ini tidak mengirim pesan sendiri.
 | Booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |  |
 | Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |  |
 | Batalkan booking Confirm | | ✓ | ✓ |  |
+| Booking Compliment (gratis, alasan wajib) | | ✓ | ✓ |  |
 | Laporan (harian atau rentang tanggal), log aktivitas | | ✓ | ✓ | ✓ |
 | Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |  |
 | Kelola user (tambah, ubah role, nonaktifkan, reset PIN) | | | ✓ |  |
@@ -98,6 +99,11 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   itu tampil **Kedaluwarsa** dan slot terbuka untuk tamu lain. Booking
   kedaluwarsa masih bisa dikonfirmasi jika slotnya masih kosong. Tentative harus
   dikonfirmasi dulu sebelum check-in, dan tidak bisa diperpanjang.
+- **Compliment** (gratis): hanya supervisor & admin, alasan wajib diisi.
+  Statusnya Confirm, total Rp 0 termasuk perpanjangan; harga normal tetap
+  disimpan. Laporan menampilkan jumlah, jam, dan nilai normal compliment
+  (tidak masuk pendapatan); CSV punya kolom `compliment`, `alasan_compliment`,
+  `nilai_normal`. Tercatat di Aktivitas beserta alasannya.
 - **Tab Daftar**: semua booking dengan filter status (Confirm, Tentative,
   Tentative kedaluwarsa, Cancel, Check-in, Selesai), rentang tanggal mulai
   (maks. 92 hari, default hari ini + 30 hari), dan pencarian nama/HP/catatan.
@@ -195,7 +201,7 @@ Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
 
 - **Rooms**: `id | name | rate_per_hour | active` — sebaiknya diubah lewat
   menu **Room** (admin) supaya tercatat di log; edit langsung di sheet tetap bisa.
-- **Bookings**: `id | room_id | customer_name | phone | start | end | duration_minutes | status | rate_per_hour | total_price | notes | checked_in_at | checked_out_at | created_at | updated_at | created_by | checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until`
+- **Bookings**: `id | room_id | customer_name | phone | start | end | duration_minutes | status | rate_per_hour | total_price | notes | checked_in_at | checked_out_at | created_at | updated_at | created_by | checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until | complimentary | compliment_reason`
   — diisi oleh aplikasi. Waktu dalam WIB, format `YYYY-MM-DD HH:MM`.
   Boleh menambah kolom sendiri di kanan; isinya tidak akan ditimpa.
 - **Users**: `username | name | role | pin_hash | active | created_at | updated_at`

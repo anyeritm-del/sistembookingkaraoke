@@ -43,6 +43,7 @@ func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u bookin
 		"id", "tanggal", "mulai", "selesai", "durasi_menit", "kode_room", "room", "tamu", "hp",
 		"status", "harga_per_jam", "total", "catatan", "dibuat_oleh", "dikonfirmasi_oleh",
 		"checkin_oleh", "checkout_oleh", "dibatalkan_oleh", "checkin_at", "checkout_at", "dibuat_at",
+		"compliment", "alasan_compliment", "nilai_normal",
 	}}
 	for _, b := range list {
 		rows = append(rows, []string{
@@ -51,6 +52,7 @@ func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u bookin
 			statusLabel(b), strconv.FormatInt(b.RatePerHour, 10), strconv.FormatInt(b.TotalPrice, 10), b.Notes,
 			b.CreatedBy, b.ConfirmedBy, b.CheckedInBy, b.CheckedOutBy, b.CancelledBy,
 			ts(b.CheckedInAt), ts(b.CheckedOutAt), ts(b.CreatedAt),
+			yaTidak(b.Complimentary), b.ComplimentReason, strconv.FormatInt(b.NormalPrice(), 10),
 		})
 	}
 	name := fmt.Sprintf("booking_%s_%s.csv", from.Format("20060102"), to.Format("20060102"))
@@ -90,6 +92,9 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request, u booking.
 		[]string{"confirm belum check-in", itoa(rep.Booked)},
 		[]string{"tentative", itoa(rep.Tentative)},
 		[]string{"batal", itoa(rep.Cancelled)},
+		[]string{"compliment (booking)", itoa(rep.Compliments)},
+		[]string{"compliment (menit)", itoa(rep.ComplimentMinutes)},
+		[]string{"compliment (nilai normal)", ftoa(rep.ComplimentValue)},
 	)
 	name := "laporan_" + strings.ReplaceAll(rep.From, "-", "")
 	if rep.To != rep.From {
@@ -106,6 +111,13 @@ func (s *Server) roomNames(r *http.Request) map[string]string {
 		}
 	}
 	return names
+}
+
+func yaTidak(v bool) string {
+	if v {
+		return "ya"
+	}
+	return "tidak"
 }
 
 func statusLabel(b booking.Booking) string {

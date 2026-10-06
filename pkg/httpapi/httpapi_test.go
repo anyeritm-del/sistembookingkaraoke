@@ -390,3 +390,27 @@ func TestReportRangeOverHTTP(t *testing.T) {
 		t.Errorf("range csv: %d %v %s", rec.Code, rec.Header(), rec.Body)
 	}
 }
+
+func TestComplimentOverHTTP(t *testing.T) {
+	s := newTestServer(t)
+	admin := login(t, s, "admin", "112233")
+	do(t, s, "POST", "/api/users", `{"username":"sari","name":"Sari","role":"staff","pin":"582047"}`, admin)
+	staff := login(t, s, "sari", "582047")
+	body := `{"room_id":"R01","customer_name":"VIP","start":"2026-10-01T19:00","duration_minutes":60,"complimentary":true,"compliment_reason":"kompensasi keluhan"}`
+	if rec := do(t, s, "POST", "/api/bookings", body, staff); rec.Code != 403 {
+		t.Errorf("staff compliment: %d %s", rec.Code, rec.Body)
+	}
+	rec := do(t, s, "POST", "/api/bookings", body, admin)
+	var b booking.Booking
+	json.Unmarshal(rec.Body.Bytes(), &b)
+	if rec.Code != 201 || !b.Complimentary || b.TotalPrice != 0 {
+		t.Fatalf("admin compliment: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(t, s, "GET", "/api/me", "", staff); strings.Contains(rec.Body.String(), "booking.compliment") {
+		t.Errorf("staff has compliment permission: %s", rec.Body)
+	}
+	rec = do(t, s, "GET", "/api/export/bookings.csv?from=2026-10-01&to=2026-10-01", "", admin)
+	if !strings.Contains(rec.Body.String(), ",ya,kompensasi keluhan,100000") {
+		t.Errorf("csv compliment columns: %s", rec.Body)
+	}
+}

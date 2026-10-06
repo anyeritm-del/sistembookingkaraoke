@@ -283,7 +283,12 @@
         <legend>Jenis booking</legend>
         <label class="check"><input type="radio" name="kind" value="confirm" checked> Confirm</label>
         <label class="check"><input type="radio" name="kind" value="tentative"> Tentative (belum pasti)</label>
+        <label class="check" data-perm="booking.compliment"><input type="radio" name="kind" value="compliment"> Compliment (gratis)</label>
       </fieldset>
+      <div class="field" id="f-comp-field" hidden>
+        <label for="f-comp-reason">Alasan compliment <span class="hint">(wajib, tercatat di laporan)</span></label>
+        <input id="f-comp-reason" name="compliment_reason" maxlength="200" autocomplete="off" placeholder="mis. tamu undangan GM, kompensasi keluhan">
+      </div>
       <p class="hint" id="f-kind-hint" hidden>Slot ditahan sampai 2 jam sebelum jam mulai (minimal 30 menit dari sekarang). Setelah itu otomatis kedaluwarsa dan slot terbuka untuk tamu lain, kecuali sudah dikonfirmasi.</p>
       <div class="field">
         <label for="f-room">Room</label>

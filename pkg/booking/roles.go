@@ -36,12 +36,14 @@ const (
 	// PermCancel allows cancelling any booking that is not checked in.
 	PermCancelTentative Permission = "booking.cancel_tentative"
 	PermCancel          Permission = "booking.cancel"
-	PermViewReport      Permission = "report.view"
-	PermViewActivity    Permission = "activity.view"
-	PermExport          Permission = "report.export"
-	PermManageRooms     Permission = "rooms.manage"
-	PermManageUsers     Permission = "users.manage"
-	PermManageDevices   Permission = "devices.manage"
+	// PermCompliment allows free (complimentary) bookings.
+	PermCompliment    Permission = "booking.compliment"
+	PermViewReport    Permission = "report.view"
+	PermViewActivity  Permission = "activity.view"
+	PermExport        Permission = "report.export"
+	PermManageRooms   Permission = "rooms.manage"
+	PermManageUsers   Permission = "users.manage"
+	PermManageDevices Permission = "devices.manage"
 )
 
 // permissions is the single source of truth for access rights.
@@ -55,12 +57,12 @@ var permissions = map[Role][]Permission{
 	RoleSupervisor: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity, PermExport,
+		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment,
 	},
 	RoleAdmin: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity, PermExport,
+		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment,
 		PermManageRooms, PermManageUsers, PermManageDevices,
 	},
 	// Accounting can look at everything about bookings and money, and

@@ -75,6 +75,8 @@ const STATUS_LABEL = {
 };
 // statusOf adds "expired" for tentative bookings past their hold time.
 const statusOf = (b) => (b.status === "tentative" && Date.parse(b.hold_until) <= Date.now() ? "expired" : b.status);
+// priceText shows "Gratis (compliment)" for free bookings.
+const priceText = (b) => (b.complimentary ? "Gratis (compliment)" : rupiah.format(b.total_price));
 const statusText = (b) => {
   const st = statusOf(b);
   return st === "tentative" ? `Tentative s/d ${hm(new Date(b.hold_until))}` : STATUS_LABEL[st] || st;
@@ -326,7 +328,7 @@ function renderTimeline() {
       let st = statusOf(b);
       if (st === "checked_in" && be <= now) st = "late";
       const block = el("button", {
-        type: "button", class: `tl-block ${st}`,
+        type: "button", class: `tl-block ${st}${b.complimentary ? " comp" : ""}`,
         style: `left:${pct(bs)};width:calc(${pct(be)} - ${pct(bs)})`,
         title: `${b.customer_name} · ${hm(new Date(bs))}–${hm(new Date(be))} · ${statusText(b)}`,
         "aria-label": `${room.name}: ${b.customer_name}, ${hm(new Date(bs))} sampai ${hm(new Date(be))}, ${statusText(b)}`,
@@ -468,7 +470,7 @@ function waMessage(kind, b) {
     case "ending":
       return `Halo ${greetName(b)}, waktu bernyanyi Anda di ${room} akan selesai pukul ${hm(end)}.\n\nJika ingin menambah waktu (+30 menit atau +1 jam), silakan balas pesan ini atau hubungi kasir. Terima kasih!`;
     case "thanks":
-      return `Terima kasih ${greetName(b)} sudah bernyanyi di ${BRAND}!\n\n• ${room}, ${date}\n• ${hm(start)}–${hm(end)} (${fmtDuration(minutes)})\n• Total: ${rupiah.format(b.total_price)}\n\nSampai jumpa lagi 🎤`;
+      return `Terima kasih ${greetName(b)} sudah bernyanyi di ${BRAND}!\n\n• ${room}, ${date}\n• ${hm(start)}–${hm(end)} (${fmtDuration(minutes)})\n• Total: ${priceText(b)}\n\nSampai jumpa lagi 🎤`;
     default: {
       const lines = [
         `Halo ${greetName(b)}, terima kasih telah booking di ${BRAND}.`,
@@ -477,7 +479,7 @@ function waMessage(kind, b) {
         `• Room: ${room}`,
         `• Tanggal: ${date}`,
         `• Jam: ${hm(start)}–${hm(end)} (${fmtDuration(minutes)})`,
-        `• Total: ${rupiah.format(b.total_price)}`,
+        `• Total: ${priceText(b)}`,
         `• Kode booking: ${b.id}`,
         "",
       ];
@@ -544,9 +546,12 @@ function bookingItem(b) {
   return el("li", { class: `bk ${st}` },
     el("div", { class: "line1" },
       el("span", { class: "time", text: `${dayPrefix}${hm(start)}–${hm(end)}` }),
-      el("span", { class: `badge ${st}`, text: statusText(b) })),
+      el("span", { class: "badges" },
+        b.complimentary ? el("span", { class: "badge comp", text: "Compliment" }) : null,
+        el("span", { class: `badge ${st}`, text: statusText(b) }))),
     el("div", { class: "who", text: b.customer_name + (b.phone ? ` · ${b.phone}` : "") }),
-    el("div", { class: "meta", text: `${fmtDuration(minutes)} · ${rupiah.format(b.total_price)}${b.notes ? ` · ${b.notes}` : ""}` }),
+    el("div", { class: "meta", text: `${fmtDuration(minutes)} · ${priceText(b)}${b.notes ? ` · ${b.notes}` : ""}` }),
+    b.complimentary ? el("div", { class: "meta", text: `Alasan compliment: ${b.compliment_reason}` }) : null,
     by ? el("div", { class: "meta", text: by }) : null,
     actions.childElementCount ? actions : null,
   );
@@ -742,6 +747,7 @@ function renderReport(rep) {
     tile("Sedang dipakai", String(rep.checked_in)),
     tile("Belum check-in", String(rep.booked)),
     tile("Tentative", String(rep.tentative)),
+    tile("Compliment", rep.compliments ? `${rep.compliments} · ${rupiah.format(rep.compliment_value)}` : "0"),
     tile("Batal", String(rep.cancelled)),
   );
   $("#report-rows").replaceChildren(...rep.rooms.map((r) => el("tr", {},
@@ -776,8 +782,8 @@ async function loadList() {
       td(roomName(b.room_id)),
       td(b.customer_name, "wrap"),
       td(b.phone),
-      td(rupiah.format(b.total_price), "num"),
-      el("td", {}, el("span", { class: `badge ${st}`, text: statusText(b) })),
+      td(priceText(b), "num"),
+      el("td", {}, b.complimentary ? el("span", { class: "badge comp", text: "Compliment" }) : null, " ", el("span", { class: `badge ${st}`, text: statusText(b) })),
       td(byText(b), "wrap"),
       el("td", {}, bookingActions(b)));
   });
@@ -1039,6 +1045,9 @@ function openBookingDialog(prefill = {}) {
   const form = $("#booking-form");
   form.reset();
   $("#f-kind-hint").hidden = true;
+  $("#f-comp-field").hidden = true;
+  $("#f-comp-reason").required = false;
+  $("#f-total").classList.remove("dialog-total-comp");
   $("#booking-error").hidden = true;
   $("#f-room").replaceChildren(...state.rooms.filter((r) => r.active).map((r) =>
     el("option", { value: r.id, text: state.pricing.length ? `${r.name || r.id}` : `${r.name || r.id} — ${rupiah.format(r.rate_per_hour)}/jam` })));
@@ -1067,7 +1076,11 @@ async function updateTotal() {
   try {
     const q = await api("GET", `/api/bookings/quote?${new URLSearchParams({ room_id: room, start, duration_minutes: minutes })}`);
     if (seq !== quoteSeq) return; // a newer request is on its way
-    $("#f-total").textContent = `Total: ${rupiah.format(q.total_price)} (${rupiah.format(q.rate_per_hour)}/jam)`;
+    const comp = $("input[name=kind][value=compliment]").checked;
+    $("#f-total").classList.toggle("dialog-total-comp", comp);
+    $("#f-total").textContent = comp
+      ? `Total: Rp 0 · Compliment (nilai normal ${rupiah.format(q.total_price)})`
+      : `Total: ${rupiah.format(q.total_price)} (${rupiah.format(q.rate_per_hour)}/jam)`;
   } catch (err) {
     if (seq === quoteSeq) $("#f-total").textContent = `Harga belum bisa dihitung: ${err.message}`;
   }
@@ -1083,14 +1096,16 @@ async function submitBooking(e) {
   const data = Object.fromEntries(new FormData(form));
   data.duration_minutes = Number(data.duration_minutes);
   data.tentative = data.kind === "tentative";
+  data.complimentary = data.kind === "compliment";
+  if (!data.complimentary) delete data.compliment_reason;
   delete data.kind;
   const btn = $("#booking-submit");
   btn.disabled = true;
   try {
     const b = await api("POST", "/api/bookings", data);
     $("#booking-dialog").close();
-    const kind = b.status === "tentative" ? `tentative, ditahan s/d ${hm(new Date(b.hold_until))}` : "confirm";
-    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${kind}, ${rupiah.format(b.total_price)})`);
+    const kind = b.complimentary ? "compliment" : b.status === "tentative" ? `tentative, ditahan s/d ${hm(new Date(b.hold_until))}` : "confirm";
+    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${kind}, ${priceText(b)})`);
     const day = ymd(new Date(b.start));
     if (day !== state.date) { state.date = day; $("#date").value = day; }
     await refresh();
@@ -1173,7 +1188,13 @@ async function init() {
   $("#pricing-add").addEventListener("click", () => $("#pricing-rows").append(pricingRow({ day_type: "weekday", start: "11:00", end: "17:00", rate_per_hour: "" })));
   $("#pricing-form").addEventListener("submit", savePricing);
   for (const r of document.querySelectorAll("input[name=kind]")) {
-    r.addEventListener("change", () => { $("#f-kind-hint").hidden = !$("input[name=kind][value=tentative]").checked; });
+    r.addEventListener("change", () => {
+      const kind = $("input[name=kind]:checked").value;
+      $("#f-kind-hint").hidden = kind !== "tentative";
+      $("#f-comp-field").hidden = kind !== "compliment";
+      $("#f-comp-reason").required = kind === "compliment";
+      updateTotal();
+    });
   }
   $("#list-filter").addEventListener("submit", (e) => {
     e.preventDefault();

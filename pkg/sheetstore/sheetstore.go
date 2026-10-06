@@ -8,7 +8,8 @@
 //	Bookings: id | room_id | customer_name | phone | start | end | duration_minutes |
 //	          status | rate_per_hour | total_price | notes | checked_in_at |
 //	          checked_out_at | created_at | updated_at | created_by |
-//	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until
+//	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until |
+//	          complimentary | compliment_reason
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
 //	Pricing:  day_type | start | end | rate_per_hour   (weekday/weekend, HH:MM)
@@ -54,7 +55,7 @@ var (
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at",
 		"checked_out_at", "created_at", "updated_at",
 		"created_by", "checked_in_by", "checked_out_by", "cancelled_by",
-		"confirmed_by", "hold_until",
+		"confirmed_by", "hold_until", "complimentary", "compliment_reason",
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
@@ -654,17 +655,19 @@ func (s *Store) parse(roomRows, bookingRows, userRows, activityHeader, deviceRow
 
 func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, error) {
 	b := booking.Booking{
-		ID:           cellString(row, c["id"]),
-		RoomID:       cellString(row, c["room_id"]),
-		CustomerName: cellString(row, c["customer_name"]),
-		Phone:        cellString(row, c["phone"]),
-		Status:       booking.Status(cellString(row, c["status"])),
-		Notes:        cellString(row, c["notes"]),
-		CreatedBy:    cellString(row, c["created_by"]),
-		CheckedInBy:  cellString(row, c["checked_in_by"]),
-		CheckedOutBy: cellString(row, c["checked_out_by"]),
-		CancelledBy:  cellString(row, c["cancelled_by"]),
-		ConfirmedBy:  cellString(row, c["confirmed_by"]),
+		ID:               cellString(row, c["id"]),
+		RoomID:           cellString(row, c["room_id"]),
+		CustomerName:     cellString(row, c["customer_name"]),
+		Phone:            cellString(row, c["phone"]),
+		Status:           booking.Status(cellString(row, c["status"])),
+		Notes:            cellString(row, c["notes"]),
+		CreatedBy:        cellString(row, c["created_by"]),
+		CheckedInBy:      cellString(row, c["checked_in_by"]),
+		CheckedOutBy:     cellString(row, c["checked_out_by"]),
+		CancelledBy:      cellString(row, c["cancelled_by"]),
+		ConfirmedBy:      cellString(row, c["confirmed_by"]),
+		Complimentary:    cellBool(row, c["complimentary"]),
+		ComplimentReason: cellString(row, c["compliment_reason"]),
 	}
 	var err error
 	if b.Start, err = s.parseTime(cellString(row, c["start"])); err != nil || b.Start.IsZero() {
@@ -695,27 +698,29 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 
 func (s *Store) bookingValues(b booking.Booking) map[string]any {
 	return map[string]any{
-		"id":               b.ID,
-		"room_id":          b.RoomID,
-		"customer_name":    b.CustomerName,
-		"phone":            b.Phone,
-		"start":            s.formatTime(b.Start, minuteLayout),
-		"end":              s.formatTime(b.End, minuteLayout),
-		"duration_minutes": b.DurationMinutes(),
-		"status":           string(b.Status),
-		"rate_per_hour":    b.RatePerHour,
-		"total_price":      b.TotalPrice,
-		"notes":            b.Notes,
-		"checked_in_at":    s.formatTime(b.CheckedInAt, secondLayout),
-		"checked_out_at":   s.formatTime(b.CheckedOutAt, secondLayout),
-		"created_at":       s.formatTime(b.CreatedAt, secondLayout),
-		"updated_at":       s.formatTime(b.UpdatedAt, secondLayout),
-		"created_by":       b.CreatedBy,
-		"checked_in_by":    b.CheckedInBy,
-		"checked_out_by":   b.CheckedOutBy,
-		"cancelled_by":     b.CancelledBy,
-		"confirmed_by":     b.ConfirmedBy,
-		"hold_until":       s.formatTime(b.HoldUntil, minuteLayout),
+		"id":                b.ID,
+		"room_id":           b.RoomID,
+		"customer_name":     b.CustomerName,
+		"phone":             b.Phone,
+		"start":             s.formatTime(b.Start, minuteLayout),
+		"end":               s.formatTime(b.End, minuteLayout),
+		"duration_minutes":  b.DurationMinutes(),
+		"status":            string(b.Status),
+		"rate_per_hour":     b.RatePerHour,
+		"total_price":       b.TotalPrice,
+		"notes":             b.Notes,
+		"checked_in_at":     s.formatTime(b.CheckedInAt, secondLayout),
+		"checked_out_at":    s.formatTime(b.CheckedOutAt, secondLayout),
+		"created_at":        s.formatTime(b.CreatedAt, secondLayout),
+		"updated_at":        s.formatTime(b.UpdatedAt, secondLayout),
+		"created_by":        b.CreatedBy,
+		"checked_in_by":     b.CheckedInBy,
+		"checked_out_by":    b.CheckedOutBy,
+		"cancelled_by":      b.CancelledBy,
+		"confirmed_by":      b.ConfirmedBy,
+		"hold_until":        s.formatTime(b.HoldUntil, minuteLayout),
+		"complimentary":     b.Complimentary,
+		"compliment_reason": b.ComplimentReason,
 	}
 }
 

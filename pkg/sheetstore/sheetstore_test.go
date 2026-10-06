@@ -46,10 +46,10 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 	header := []any{"room_id", "id", "customer_name", "phone", "start", "end", "duration_minutes",
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at", "checked_out_at",
 		"created_at", "updated_at", "staff_note", "created_by", "checked_in_by", "checked_out_by", "cancelled_by",
-		"confirmed_by", "hold_until"}
+		"confirmed_by", "hold_until", "complimentary", "compliment_reason"}
 	row := []any{"R01", "BK-1", "Budi", "0812", "2026-10-01 19:00", "2026-10-01 20:30", float64(90),
 		"checked_in", float64(100000), float64(150000), "", "2026-10-01 18:55:10", "",
-		"2026-10-01 10:00:00", "2026-10-01 18:55:10", "VIP guest", "sari", "sari", "", "", "budi", "2026-10-01 17:00"}
+		"2026-10-01 10:00:00", "2026-10-01 18:55:10", "VIP guest", "sari", "sari", "", "", "budi", "2026-10-01 17:00", true, "ulang tahun GM"}
 
 	snap, err := s.parse(roomsTab, [][]any{header, row, {}}, usersTab, activityHeader, devicesTab, pricingTab)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 	b := snap.bookings[0]
 	if b.Status != booking.StatusCheckedIn || b.DurationMinutes() != 90 || b.TotalPrice != 150000 ||
 		b.Phone != "0812" || b.CreatedBy != "sari" || b.CheckedInBy != "sari" || b.CheckedOutBy != "" ||
-		b.ConfirmedBy != "budi" || b.HoldUntil.Hour() != 17 {
+		b.ConfirmedBy != "budi" || b.HoldUntil.Hour() != 17 || !b.Complimentary || b.ComplimentReason != "ulang tahun GM" {
 		t.Errorf("booking = %+v", b)
 	}
 	if b.Start.Hour() != 19 || b.Start.Location() != s.loc {
@@ -77,6 +77,9 @@ func TestParseAndWriteRoundTrip(t *testing.T) {
 	out := buildRow(s.bookingValues(b), bt.cols, bt.raw["bk-1"])
 	if out[0] != "R01" || out[1] != "BK-1" || out[7] != "finished" || out[15] != "VIP guest" || out[18] != "andi" {
 		t.Errorf("row = %v", out)
+	}
+	if out[22] != true || out[23] != "ulang tahun GM" {
+		t.Errorf("compliment cells = %v %v", out[22], out[23])
 	}
 	if out[21] != "2026-10-01 17:00" || out[20] != "budi" {
 		t.Errorf("hold/confirmed cells = %v %v", out[20], out[21])

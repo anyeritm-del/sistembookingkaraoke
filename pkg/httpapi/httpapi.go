@@ -217,13 +217,15 @@ func (s *Server) dayBookings(w http.ResponseWriter, r *http.Request, u booking.U
 
 func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking.User) {
 	var in struct {
-		RoomID          string `json:"room_id"`
-		CustomerName    string `json:"customer_name"`
-		Phone           string `json:"phone"`
-		Notes           string `json:"notes"`
-		Start           string `json:"start"` // "2006-01-02T15:04" in business time zone
-		DurationMinutes int    `json:"duration_minutes"`
-		Tentative       bool   `json:"tentative"`
+		RoomID           string `json:"room_id"`
+		CustomerName     string `json:"customer_name"`
+		Phone            string `json:"phone"`
+		Notes            string `json:"notes"`
+		Start            string `json:"start"` // "2006-01-02T15:04" in business time zone
+		DurationMinutes  int    `json:"duration_minutes"`
+		Tentative        bool   `json:"tentative"`
+		Complimentary    bool   `json:"complimentary"`
+		ComplimentReason string `json:"compliment_reason"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -236,6 +238,7 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 	b, err := s.svc.Create(r.Context(), u, booking.CreateInput{
 		RoomID: in.RoomID, CustomerName: in.CustomerName, Phone: in.Phone,
 		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes, Tentative: in.Tentative,
+		Complimentary: in.Complimentary, ComplimentReason: in.ComplimentReason,
 	})
 	respond(w, http.StatusCreated, b, err)
 }

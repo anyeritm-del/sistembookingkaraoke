@@ -66,6 +66,15 @@ type Booking struct {
 	ConfirmedBy  string `json:"confirmed_by"`
 	// HoldUntil is when a tentative booking stops holding the slot.
 	HoldUntil time.Time `json:"hold_until"`
+	// Complimentary bookings are free (TotalPrice 0, also after extending).
+	// RatePerHour keeps the normal rate so reports can show what was given away.
+	Complimentary    bool   `json:"complimentary"`
+	ComplimentReason string `json:"compliment_reason"`
+}
+
+// NormalPrice is what the booking would cost without a compliment.
+func (b Booking) NormalPrice() int64 {
+	return Price(b.RatePerHour, b.DurationMinutes())
 }
 
 // HoldsSlot reports whether the booking blocks its time slot at now:

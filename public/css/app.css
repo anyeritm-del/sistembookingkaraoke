@@ -265,6 +265,7 @@ td .actions { justify-content: flex-end; }
 .bk.tentative { border-style: dashed; border-color: #f2c37d; background: #fffcf5; }
 .bk.expired { opacity: .6; border-style: dashed; }
 
+.badges { display: inline-flex; gap: .3rem; flex-wrap: wrap; justify-content: flex-end; }
 .badge {
   display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700;
   padding: .15rem .55rem; border-radius: 999px; white-space: nowrap; letter-spacing: .01em;
@@ -326,6 +327,15 @@ dialog h2 { margin-block-end: 1.1rem; font-size: 1.15rem; }
 dialog .row { display: grid; gap: 0 1rem; grid-template-columns: 1fr 1fr; }
 dialog .total { font-size: 1.05rem; font-weight: 700; margin-block: .25rem 1rem; padding: .7rem .9rem; border-radius: var(--radius); background: var(--brand-soft); color: var(--brand); }
 @media (max-width: 480px) { dialog .row { grid-template-columns: 1fr; } }
+
+/* ---------- Compliment ---------- */
+.badge.comp { color: #6b21a8; background: #f3e8ff; }
+.tl-block.comp::after {
+  content: "FREE"; position: absolute; top: 3px; right: 4px;
+  font-size: .6rem; font-weight: 800; letter-spacing: .05em;
+  padding: 0 .3rem; border-radius: 4px; background: #f3e8ff; color: #6b21a8;
+}
+.dialog-total-comp { background: #f3e8ff !important; color: #6b21a8 !important; }
 
 /* ---------- WhatsApp ---------- */
 .btn.wa { color: #128c4b; border-color: #a7e3c0; }

@@ -87,6 +87,10 @@ type CreateInput struct {
 	DurationMinutes int       `json:"duration_minutes"`
 	// Tentative makes a booking that holds the slot only until HoldUntil.
 	Tentative bool `json:"tentative"`
+	// Complimentary makes a free, confirmed booking; it needs PermCompliment
+	// and a reason.
+	Complimentary    bool   `json:"complimentary"`
+	ComplimentReason string `json:"compliment_reason"`
 }
 
 // Create validates the input, checks the schedule and saves a new booking.
@@ -105,6 +109,20 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	}
 	if in.Start.IsZero() {
 		return Booking{}, fmt.Errorf("%w: jam mulai wajib diisi", ErrInvalid)
+	}
+	in.ComplimentReason = strings.TrimSpace(in.ComplimentReason)
+	if in.Complimentary {
+		if !actor.Can(PermCompliment) {
+			return Booking{}, fmt.Errorf("%w: booking compliment hanya untuk supervisor atau admin", ErrForbidden)
+		}
+		if in.Tentative {
+			return Booking{}, fmt.Errorf("%w: compliment tidak bisa tentative", ErrInvalid)
+		}
+		if in.ComplimentReason == "" || len(in.ComplimentReason) > 200 {
+			return Booking{}, fmt.Errorf("%w: alasan compliment wajib diisi (maks. 200 karakter)", ErrInvalid)
+		}
+	} else {
+		in.ComplimentReason = ""
 	}
 
 	s.mu.Lock()
@@ -157,6 +175,10 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 		CreatedBy:    actor.Username,
 	}
 	kind := "confirm"
+	if in.Complimentary {
+		b.Complimentary, b.ComplimentReason, b.TotalPrice = true, in.ComplimentReason, 0
+		kind = fmt.Sprintf("COMPLIMENT (nilai normal %s): %s", rupiah(b.NormalPrice()), in.ComplimentReason)
+	}
 	if in.Tentative {
 		b.Status = StatusTentative
 		b.HoldUntil = tentativeHold(start, now)
@@ -188,6 +210,9 @@ func (s *Service) Extend(ctx context.Context, actor User, id string, minutes int
 		}
 		b.End = newEnd
 		b.TotalPrice = Price(b.RatePerHour, b.DurationMinutes())
+		if b.Complimentary {
+			b.TotalPrice = 0 // the whole stay is free, extensions too
+		}
 		return fmt.Sprintf("+%d menit, selesai %s, total %s", minutes, newEnd.Format("15:04"), rupiah(b.TotalPrice)), nil
 	})
 }
@@ -345,17 +370,22 @@ type DayReport struct {
 // the day it starts. Revenue and Minutes count finished and checked-in
 // bookings only; the other statuses are only counted.
 type SalesReport struct {
-	From      string       `json:"from"`
-	To        string       `json:"to"`
-	Finished  int          `json:"finished"`
-	CheckedIn int          `json:"checked_in"`
-	Booked    int          `json:"booked"`
-	Tentative int          `json:"tentative"`
-	Cancelled int          `json:"cancelled"`
-	Minutes   int          `json:"minutes"`
-	Revenue   int64        `json:"revenue"`
-	Rooms     []RoomReport `json:"rooms"`
-	Days      []DayReport  `json:"days"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Finished  int    `json:"finished"`
+	CheckedIn int    `json:"checked_in"`
+	Booked    int    `json:"booked"`
+	Tentative int    `json:"tentative"`
+	Cancelled int    `json:"cancelled"`
+	Minutes   int    `json:"minutes"`
+	Revenue   int64  `json:"revenue"`
+	// Compliments are the finished and checked-in free bookings (already
+	// inside Finished/CheckedIn/Minutes); ComplimentValue is their normal price.
+	Compliments       int          `json:"compliments"`
+	ComplimentMinutes int          `json:"compliment_minutes"`
+	ComplimentValue   int64        `json:"compliment_value"`
+	Rooms             []RoomReport `json:"rooms"`
+	Days              []DayReport  `json:"days"`
 }
 
 // Report builds the report for the days fromDay..toDay (inclusive, at most
@@ -421,6 +451,11 @@ func (s *Service) Report(ctx context.Context, actor User, fromDay, toDay time.Ti
 		minutes := b.DurationMinutes()
 		rep.Minutes += minutes
 		rep.Revenue += b.TotalPrice
+		if b.Complimentary {
+			rep.Compliments++
+			rep.ComplimentMinutes += minutes
+			rep.ComplimentValue += b.NormalPrice()
+		}
 		rr, ok := byRoom[b.RoomID]
 		if !ok { // room was deleted from the sheet
 			rr = &RoomReport{RoomID: b.RoomID, RoomName: b.RoomID}
