@@ -105,6 +105,10 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   disimpan. Laporan menampilkan jumlah, jam, dan nilai normal compliment
   (tidak masuk pendapatan); CSV punya kolom `compliment`, `alasan_compliment`,
   `nilai_normal`. Tercatat di Aktivitas beserta alasannya.
+  Kolom **Nomor voucher** (opsional) untuk compliment dari voucher: disimpan
+  huruf besar, satu voucher hanya untuk satu booking yang tidak dibatalkan
+  (dibatalkan → voucher bisa dipakai lagi), bisa dicari di tab Daftar, ikut di
+  CSV (`voucher`) dan Aktivitas.
 - **Check-out lebih awal**: jika tamu check-out sebelum jam selesai, muncul
   pilihan tagihan:
   - *Sesuai booking* (default, semua staf): tetap bayar durasi booking.
@@ -212,7 +216,7 @@ Struktur sheet (baris 1 = header, kolom dicari berdasarkan nama header):
 
 - **Rooms**: `id | name | rate_per_hour | active` — sebaiknya diubah lewat
   menu **Room** (admin) supaya tercatat di log; edit langsung di sheet tetap bisa.
-- **Bookings**: `id | room_id | customer_name | phone | start | end | duration_minutes | status | rate_per_hour | total_price | notes | checked_in_at | checked_out_at | created_at | updated_at | created_by | checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until | complimentary | compliment_reason | billed_minutes`
+- **Bookings**: `id | room_id | customer_name | phone | start | end | duration_minutes | status | rate_per_hour | total_price | notes | checked_in_at | checked_out_at | created_at | updated_at | created_by | checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until | complimentary | compliment_reason | billed_minutes | voucher_number`
   — diisi oleh aplikasi. Waktu dalam WIB, format `YYYY-MM-DD HH:MM`.
   Boleh menambah kolom sendiri di kanan; isinya tidak akan ditimpa.
 - **Users**: `username | name | role | pin_hash | active | created_at | updated_at`

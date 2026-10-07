@@ -15,7 +15,7 @@ type ListFilter struct {
 	To   time.Time
 	// Status is a Status, "expired" (tentative past its hold time), or "" for all.
 	Status string
-	// Query matches guest name, phone, notes or booking ID, ignoring case.
+	// Query matches guest name, phone, notes, booking ID or voucher, ignoring case.
 	Query  string
 	RoomID string
 }
@@ -87,7 +87,7 @@ func (s *Service) List(ctx context.Context, actor User, f ListFilter) ([]Booking
 }
 
 func matches(b Booking, q string) bool {
-	for _, field := range []string{b.CustomerName, b.Phone, b.Notes, b.ID} {
+	for _, field := range []string{b.CustomerName, b.Phone, b.Notes, b.ID, b.VoucherNumber} {
 		if strings.Contains(strings.ToLower(field), q) {
 			return true
 		}

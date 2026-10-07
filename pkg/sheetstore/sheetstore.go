@@ -9,7 +9,7 @@
 //	          status | rate_per_hour | total_price | notes | checked_in_at |
 //	          checked_out_at | created_at | updated_at | created_by |
 //	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until |
-//	          complimentary | compliment_reason | billed_minutes
+//	          complimentary | compliment_reason | billed_minutes | voucher_number
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
 //	Pricing:  day_type | start | end | rate_per_hour   (weekday/weekend, HH:MM)
@@ -55,7 +55,7 @@ var (
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at",
 		"checked_out_at", "created_at", "updated_at",
 		"created_by", "checked_in_by", "checked_out_by", "cancelled_by",
-		"confirmed_by", "hold_until", "complimentary", "compliment_reason", "billed_minutes",
+		"confirmed_by", "hold_until", "complimentary", "compliment_reason", "billed_minutes", "voucher_number",
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
@@ -668,6 +668,7 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 		ConfirmedBy:      cellString(row, c["confirmed_by"]),
 		Complimentary:    cellBool(row, c["complimentary"]),
 		ComplimentReason: cellString(row, c["compliment_reason"]),
+		VoucherNumber:    cellString(row, c["voucher_number"]),
 	}
 	var err error
 	if b.Start, err = s.parseTime(cellString(row, c["start"])); err != nil || b.Start.IsZero() {
@@ -727,6 +728,7 @@ func (s *Store) bookingValues(b booking.Booking) map[string]any {
 		"complimentary":     b.Complimentary,
 		"compliment_reason": b.ComplimentReason,
 		"billed_minutes":    billedCell(b.BilledMinutes),
+		"voucher_number":    b.VoucherNumber,
 	}
 }
 

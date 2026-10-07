@@ -43,7 +43,7 @@ func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u bookin
 		"id", "tanggal", "mulai", "selesai", "durasi_menit", "kode_room", "room", "tamu", "hp",
 		"status", "harga_per_jam", "total", "catatan", "dibuat_oleh", "dikonfirmasi_oleh",
 		"checkin_oleh", "checkout_oleh", "dibatalkan_oleh", "checkin_at", "checkout_at", "dibuat_at",
-		"compliment", "alasan_compliment", "nilai_normal", "menit_pakai", "menit_ditagih",
+		"compliment", "alasan_compliment", "nilai_normal", "menit_pakai", "menit_ditagih", "voucher",
 	}}
 	for _, b := range list {
 		rows = append(rows, []string{
@@ -53,7 +53,7 @@ func (s *Server) exportBookings(w http.ResponseWriter, r *http.Request, u bookin
 			b.CreatedBy, b.ConfirmedBy, b.CheckedInBy, b.CheckedOutBy, b.CancelledBy,
 			ts(b.CheckedInAt), ts(b.CheckedOutAt), ts(b.CreatedAt),
 			yaTidak(b.Complimentary), b.ComplimentReason, strconv.FormatInt(b.NormalPrice(), 10),
-			strconv.Itoa(b.UsedMinutes()), strconv.Itoa(b.ChargedMinutes()),
+			strconv.Itoa(b.UsedMinutes()), strconv.Itoa(b.ChargedMinutes()), b.VoucherNumber,
 		})
 	}
 	name := fmt.Sprintf("booking_%s_%s.csv", from.Format("20060102"), to.Format("20060102"))

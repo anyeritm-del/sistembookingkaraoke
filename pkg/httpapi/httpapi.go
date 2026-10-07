@@ -226,6 +226,7 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 		Tentative        bool   `json:"tentative"`
 		Complimentary    bool   `json:"complimentary"`
 		ComplimentReason string `json:"compliment_reason"`
+		VoucherNumber    string `json:"voucher_number"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -238,7 +239,7 @@ func (s *Server) createBooking(w http.ResponseWriter, r *http.Request, u booking
 	b, err := s.svc.Create(r.Context(), u, booking.CreateInput{
 		RoomID: in.RoomID, CustomerName: in.CustomerName, Phone: in.Phone,
 		Notes: in.Notes, Start: start, DurationMinutes: in.DurationMinutes, Tentative: in.Tentative,
-		Complimentary: in.Complimentary, ComplimentReason: in.ComplimentReason,
+		Complimentary: in.Complimentary, ComplimentReason: in.ComplimentReason, VoucherNumber: in.VoucherNumber,
 	})
 	respond(w, http.StatusCreated, b, err)
 }
@@ -525,7 +526,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, booking.ErrBadLogin), errors.Is(err, booking.ErrBadPairCode):
 		writeError(w, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, booking.ErrConflict), errors.Is(err, booking.ErrWrongState):
+	case errors.Is(err, booking.ErrConflict), errors.Is(err, booking.ErrWrongState), errors.Is(err, booking.ErrVoucherUsed):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, booking.ErrInvalid):
 		writeError(w, http.StatusBadRequest, err.Error())

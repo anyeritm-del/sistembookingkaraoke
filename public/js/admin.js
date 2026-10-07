@@ -615,7 +615,7 @@ function bookingItem(b) {
     el("div", { class: "who", text: b.customer_name + (b.phone ? ` · ${b.phone}` : "") }),
     el("div", { class: "meta", text: `${fmtDuration(minutes)} · ${priceText(b)}${b.notes ? ` · ${b.notes}` : ""}` }),
     usageText(b) ? el("div", { class: "meta", text: usageText(b) }) : null,
-    b.complimentary ? el("div", { class: "meta", text: `Alasan compliment: ${b.compliment_reason}` }) : null,
+    b.complimentary ? el("div", { class: "meta", text: `Alasan compliment: ${b.compliment_reason}${b.voucher_number ? ` · Voucher ${b.voucher_number}` : ""}` }) : null,
     by ? el("div", { class: "meta", text: by }) : null,
     actions.childElementCount ? actions : null,
   );
@@ -847,7 +847,7 @@ async function loadList() {
       td(b.customer_name, "wrap"),
       td(b.phone),
       td(priceText(b), "num"),
-      el("td", {}, b.complimentary ? el("span", { class: "badge comp", text: "Compliment" }) : null, " ", el("span", { class: `badge ${st}`, text: statusText(b) })),
+      el("td", {}, b.complimentary ? el("span", { class: "badge comp", text: b.voucher_number ? `Compliment · ${b.voucher_number}` : "Compliment" }) : null, " ", el("span", { class: `badge ${st}`, text: statusText(b) })),
       td(byText(b), "wrap"),
       el("td", {}, bookingActions(b)));
   });
@@ -1110,6 +1110,7 @@ function openBookingDialog(prefill = {}) {
   form.reset();
   $("#f-kind-hint").hidden = true;
   $("#f-comp-field").hidden = true;
+  $("#f-voucher-field").hidden = true;
   $("#f-comp-reason").required = false;
   $("#f-total").classList.remove("dialog-total-comp");
   $("#booking-error").hidden = true;
@@ -1161,7 +1162,10 @@ async function submitBooking(e) {
   data.duration_minutes = Number(data.duration_minutes);
   data.tentative = data.kind === "tentative";
   data.complimentary = data.kind === "compliment";
-  if (!data.complimentary) delete data.compliment_reason;
+  if (!data.complimentary) {
+    delete data.compliment_reason;
+    delete data.voucher_number;
+  }
   delete data.kind;
   const btn = $("#booking-submit");
   btn.disabled = true;
@@ -1169,7 +1173,8 @@ async function submitBooking(e) {
     const b = await api("POST", "/api/bookings", data);
     $("#booking-dialog").close();
     const kind = b.complimentary ? "compliment" : b.status === "tentative" ? `tentative, ditahan s/d ${hm(new Date(b.hold_until))}` : "confirm";
-    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${kind}, ${priceText(b)})`);
+    const price = b.complimentary ? `gratis${b.voucher_number ? `, voucher ${b.voucher_number}` : ""}` : priceText(b);
+    flash(`Booking ${b.customer_name} ${hm(new Date(b.start))}–${hm(new Date(b.end))} tersimpan (${kind}, ${price})`);
     const day = ymd(new Date(b.start));
     if (day !== state.date) { state.date = day; $("#date").value = day; }
     await refresh();
@@ -1258,6 +1263,7 @@ async function init() {
       const kind = $("input[name=kind]:checked").value;
       $("#f-kind-hint").hidden = kind !== "tentative";
       $("#f-comp-field").hidden = kind !== "compliment";
+      $("#f-voucher-field").hidden = kind !== "compliment";
       $("#f-comp-reason").required = kind === "compliment";
       updateTotal();
     });

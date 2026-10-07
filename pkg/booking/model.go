@@ -70,6 +70,9 @@ type Booking struct {
 	// RatePerHour keeps the normal rate so reports can show what was given away.
 	Complimentary    bool   `json:"complimentary"`
 	ComplimentReason string `json:"compliment_reason"`
+	// VoucherNumber is the voucher a compliment was given for. A voucher can
+	// be used by one booking that is not cancelled.
+	VoucherNumber string `json:"voucher_number"`
 	// BilledMinutes is set when an early check-out was billed by usage;
 	// 0 means the booked duration was billed.
 	BilledMinutes int `json:"billed_minutes"`
@@ -182,9 +185,10 @@ func FreshRead(ctx context.Context) bool {
 
 // Errors returned by the service. The HTTP layer maps them to status codes.
 var (
-	ErrNotFound   = errors.New("data tidak ditemukan")
-	ErrConflict   = errors.New("jadwal bentrok dengan booking lain")
-	ErrInvalid    = errors.New("data tidak valid")
-	ErrWrongState = errors.New("status booking tidak sesuai untuk aksi ini")
-	ErrForbidden  = errors.New("anda tidak punya akses untuk aksi ini")
+	ErrNotFound    = errors.New("data tidak ditemukan")
+	ErrConflict    = errors.New("jadwal bentrok dengan booking lain")
+	ErrInvalid     = errors.New("data tidak valid")
+	ErrWrongState  = errors.New("status booking tidak sesuai untuk aksi ini")
+	ErrForbidden   = errors.New("anda tidak punya akses untuk aksi ini")
+	ErrVoucherUsed = errors.New("voucher sudah dipakai")
 )

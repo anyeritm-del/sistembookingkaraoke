@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 )
+
+var voucherRe = regexp.MustCompile(`^[A-Z0-9][A-Z0-9\-/._]{0,39}$`)
 
 // Booking limits. Durations move in 30-minute steps.
 // The hourly rate comes from the price table (see pricing.go) for the start
@@ -91,6 +94,8 @@ type CreateInput struct {
 	// and a reason.
 	Complimentary    bool   `json:"complimentary"`
 	ComplimentReason string `json:"compliment_reason"`
+	// VoucherNumber is optional and only kept for compliments.
+	VoucherNumber string `json:"voucher_number"`
 }
 
 // Create validates the input, checks the schedule and saves a new booking.
@@ -121,8 +126,12 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 		if in.ComplimentReason == "" || len(in.ComplimentReason) > 200 {
 			return Booking{}, fmt.Errorf("%w: alasan compliment wajib diisi (maks. 200 karakter)", ErrInvalid)
 		}
+		in.VoucherNumber = strings.ToUpper(strings.TrimSpace(in.VoucherNumber))
+		if in.VoucherNumber != "" && !voucherRe.MatchString(in.VoucherNumber) {
+			return Booking{}, fmt.Errorf("%w: nomor voucher hanya huruf, angka, - / . _ (maks. 40 karakter)", ErrInvalid)
+		}
 	} else {
-		in.ComplimentReason = ""
+		in.ComplimentReason, in.VoucherNumber = "", ""
 	}
 
 	s.mu.Lock()
@@ -154,6 +163,14 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	if c, ok := findConflict(all, room.ID, start, end, "", now); ok {
 		return Booking{}, conflictError(c)
 	}
+	if in.VoucherNumber != "" {
+		for _, o := range all {
+			if o.Status != StatusCancelled && strings.EqualFold(o.VoucherNumber, in.VoucherNumber) {
+				return Booking{}, fmt.Errorf("%w: %s dipakai booking %s (%s, %s)", ErrVoucherUsed,
+					in.VoucherNumber, o.ID, o.CustomerName, o.Start.In(s.loc).Format("02/01/2006 15:04"))
+			}
+		}
+	}
 	rate, err := s.rateFor(ctx, room, start)
 	if err != nil {
 		return Booking{}, err
@@ -176,8 +193,11 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	}
 	kind := "confirm"
 	if in.Complimentary {
-		b.Complimentary, b.ComplimentReason, b.TotalPrice = true, in.ComplimentReason, 0
+		b.Complimentary, b.ComplimentReason, b.VoucherNumber, b.TotalPrice = true, in.ComplimentReason, in.VoucherNumber, 0
 		kind = fmt.Sprintf("COMPLIMENT (nilai normal %s): %s", rupiah(b.NormalPrice()), in.ComplimentReason)
+		if b.VoucherNumber != "" {
+			kind += ", voucher " + b.VoucherNumber
+		}
 	}
 	if in.Tentative {
 		b.Status = StatusTentative
