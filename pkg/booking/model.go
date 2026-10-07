@@ -70,11 +70,41 @@ type Booking struct {
 	// RatePerHour keeps the normal rate so reports can show what was given away.
 	Complimentary    bool   `json:"complimentary"`
 	ComplimentReason string `json:"compliment_reason"`
+	// BilledMinutes is set when an early check-out was billed by usage;
+	// 0 means the booked duration was billed.
+	BilledMinutes int `json:"billed_minutes"`
+}
+
+// ChargedMinutes is the duration the guest pays for.
+func (b Booking) ChargedMinutes() int {
+	if b.BilledMinutes > 0 {
+		return b.BilledMinutes
+	}
+	return b.DurationMinutes()
+}
+
+// UsedMinutes is the real time in the room: check-in to check-out for a
+// finished booking, otherwise the booked duration.
+func (b Booking) UsedMinutes() int {
+	if b.Status == StatusFinished && !b.CheckedInAt.IsZero() && !b.CheckedOutAt.IsZero() && !b.CheckedOutAt.Before(b.CheckedInAt) {
+		d := b.CheckedOutAt.Sub(b.CheckedInAt)
+		return int((d + time.Minute - 1) / time.Minute) // round up to the minute
+	}
+	return b.DurationMinutes()
 }
 
 // NormalPrice is what the booking would cost without a compliment.
 func (b Booking) NormalPrice() int64 {
-	return Price(b.RatePerHour, b.DurationMinutes())
+	return Price(b.RatePerHour, b.ChargedMinutes())
+}
+
+// BillableMinutes is what an early check-out costs when billed by usage:
+// the used time rounded up to StepMinutes, at least one hour, and never
+// more than the booked time.
+func BillableMinutes(used, booked int) int {
+	m := (used + StepMinutes - 1) / StepMinutes * StepMinutes
+	m = max(m, 60)
+	return min(m, booked)
 }
 
 // HoldsSlot reports whether the booking blocks its time slot at now:

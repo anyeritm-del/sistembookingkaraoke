@@ -53,7 +53,7 @@ func New(svc *booking.Service, a *auth.Auth, tvKey string) *Server {
 	s.route("PUT /api/pricing", s.updatePricing)
 	s.route("POST /api/bookings/{id}/confirm", s.action(s.svc.Confirm))
 	s.route("POST /api/bookings/{id}/checkin", s.action(s.svc.CheckIn))
-	s.route("POST /api/bookings/{id}/checkout", s.action(s.svc.CheckOut))
+	s.route("POST /api/bookings/{id}/checkout", s.checkout)
 	s.route("POST /api/bookings/{id}/cancel", s.action(s.svc.Cancel))
 	s.route("GET /api/report", s.report)
 	s.route("GET /api/activity", s.activity)
@@ -290,6 +290,19 @@ func (s *Server) listBookings(w http.ResponseWriter, r *http.Request, u booking.
 		From: from, To: to, Status: q.Get("status"), Query: q.Get("q"), RoomID: q.Get("room"),
 	})
 	respond(w, http.StatusOK, map[string]any{"bookings": nonNil(list), "summary": sum}, err)
+}
+
+// checkout takes {"bill":"usage"} to bill an early check-out by the time used;
+// anything else bills the booked time.
+func (s *Server) checkout(w http.ResponseWriter, r *http.Request, u booking.User) {
+	var in struct {
+		Bill string `json:"bill"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	b, err := s.svc.CheckOut(r.Context(), u, r.PathValue("id"), in.Bill == "usage")
+	respond(w, http.StatusOK, b, err)
 }
 
 func (s *Server) extend(w http.ResponseWriter, r *http.Request, u booking.User) {

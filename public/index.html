@@ -335,6 +335,26 @@
     </div>
   </dialog>
 
+  <!-- Early check-out: choose how to bill -->
+  <dialog id="checkout-dialog" aria-labelledby="co-title">
+    <form id="checkout-form" method="dialog">
+      <h2 id="co-title">Check-out lebih awal</h2>
+      <p class="co-facts" id="co-facts"></p>
+      <fieldset class="co-options">
+        <legend>Tagihan</legend>
+        <label class="co-option"><input type="radio" name="bill" value="booked" checked>
+          <span><b>Sesuai booking</b><span id="co-booked"></span></span></label>
+        <label class="co-option" id="co-usage-label"><input type="radio" name="bill" value="usage" id="co-usage">
+          <span><b>Sesuai pemakaian</b><span id="co-usage-text"></span></span></label>
+      </fieldset>
+      <p class="hint" id="co-usage-hint"></p>
+      <div class="buttons">
+        <button class="btn" type="button" data-close>Batal</button>
+        <button class="btn primary" type="submit">Check-out</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- WhatsApp message preview: staff check and edit, then WhatsApp opens -->
   <dialog id="wa-dialog" aria-labelledby="wa-title">
     <form id="wa-form" method="dialog">

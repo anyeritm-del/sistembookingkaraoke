@@ -37,7 +37,9 @@ const (
 	PermCancelTentative Permission = "booking.cancel_tentative"
 	PermCancel          Permission = "booking.cancel"
 	// PermCompliment allows free (complimentary) bookings.
-	PermCompliment    Permission = "booking.compliment"
+	PermCompliment Permission = "booking.compliment"
+	// PermBillByUsage allows billing an early check-out by the time used.
+	PermBillByUsage   Permission = "booking.bill_by_usage"
 	PermViewReport    Permission = "report.view"
 	PermViewActivity  Permission = "activity.view"
 	PermExport        Permission = "report.export"
@@ -57,12 +59,12 @@ var permissions = map[Role][]Permission{
 	RoleSupervisor: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment,
+		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment, PermBillByUsage,
 	},
 	RoleAdmin: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
 		PermConfirm, PermCancelTentative,
-		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment,
+		PermCancel, PermViewReport, PermViewActivity, PermExport, PermCompliment, PermBillByUsage,
 		PermManageRooms, PermManageUsers, PermManageDevices,
 	},
 	// Accounting can look at everything about bookings and money, and

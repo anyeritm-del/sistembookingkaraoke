@@ -188,14 +188,14 @@ func TestCheckInCheckOutFlow(t *testing.T) {
 		t.Errorf("double check-in: err = %v", err)
 	}
 	f.now = at("21:05")
-	got, err = f.svc.CheckOut(f.ctx, f.sup, b.ID)
+	got, err = f.svc.CheckOut(f.ctx, f.sup, b.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Status != booking.StatusFinished {
 		t.Errorf("status = %s", got.Status)
 	}
-	if _, err := f.svc.CheckOut(f.ctx, f.sup, "nope"); !errors.Is(err, booking.ErrNotFound) {
+	if _, err := f.svc.CheckOut(f.ctx, f.sup, "nope", false); !errors.Is(err, booking.ErrNotFound) {
 		t.Errorf("unknown id: err = %v", err)
 	}
 }
@@ -258,7 +258,9 @@ func TestReport(t *testing.T) {
 
 	ok := mustOK(t)
 	ok(f.svc.CheckIn(f.ctx, f.sup, a.ID))
-	ok(f.svc.CheckOut(f.ctx, f.sup, a.ID))
+	f.now = at("19:00") // a used its full hour
+	ok(f.svc.CheckOut(f.ctx, f.sup, a.ID, false))
+	f.now = at("18:00")
 	ok(f.svc.CheckIn(f.ctx, f.sup, b.ID))
 	ok(f.svc.Cancel(f.ctx, f.sup, c.ID))
 
@@ -332,9 +334,10 @@ func TestReportRange(t *testing.T) {
 	f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R02", CustomerName: "T", Start: at("21:00"), DurationMinutes: 60, Tentative: true})
 
 	// Make them count as sales: check in and out on their day.
-	f.now = at("19:05")
+	f.now = at("19:00")
 	f.svc.CheckIn(f.ctx, f.sup, thu.ID)
-	f.svc.CheckOut(f.ctx, f.sup, thu.ID)
+	f.now = at("20:00") // used the full hour
+	f.svc.CheckOut(f.ctx, f.sup, thu.ID, false)
 	f.now = at("20:05").AddDate(0, 0, 2)
 	f.svc.CheckIn(f.ctx, f.sup, sat.ID)
 

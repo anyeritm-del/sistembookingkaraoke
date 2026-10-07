@@ -75,6 +75,14 @@ const STATUS_LABEL = {
 };
 // statusOf adds "expired" for tentative bookings past their hold time.
 const statusOf = (b) => (b.status === "tentative" && Date.parse(b.hold_until) <= Date.now() ? "expired" : b.status);
+// usageText tells how long a finished guest really stayed, and the billed time
+// when that differs from the booking.
+function usageText(b) {
+  if (b.status !== "finished" || !(Date.parse(b.checked_in_at) > 0) || !(Date.parse(b.checked_out_at) > 0)) return "";
+  const used = Math.max(0, Math.ceil((Date.parse(b.checked_out_at) - Date.parse(b.checked_in_at)) / 60000));
+  return `Terpakai ${fmtDuration(used)}${b.billed_minutes ? ` · ditagih ${fmtDuration(b.billed_minutes)} (sesuai pemakaian)` : ""}`;
+}
+
 // priceText shows "Gratis (compliment)" for free bookings.
 const priceText = (b) => (b.complimentary ? "Gratis (compliment)" : rupiah.format(b.total_price));
 const statusText = (b) => {
@@ -419,7 +427,7 @@ function bookingActions(b) {
       );
     }
     if (can("booking.checkout")) {
-      actions.append(act("Check-out", () => confirm(`Check-out ${b.customer_name}? Alarm di TV akan berhenti.`) && doAction(b, "checkout", undefined, `Check-out ${b.customer_name}`), "primary"));
+      actions.append(act("Check-out", () => checkoutFlow(b), "primary"));
     }
   }
   // WhatsApp to the guest, for people who serve guests (not view-only roles).
@@ -431,6 +439,61 @@ function bookingActions(b) {
     }));
   }
   return actions;
+}
+
+// ---------- Check-out (early check-out billing) ----------
+
+const STEP = 30;
+// billableMinutes mirrors booking.BillableMinutes on the server.
+const billableMinutes = (used, booked) => Math.min(Math.max(Math.ceil(used / STEP) * STEP, 60), booked);
+
+let checkoutBooking = null;
+
+// checkoutFlow asks a plain confirmation, or for an early check-out lets
+// staff choose to bill the booked time or (supervisor/admin) the time used.
+async function checkoutFlow(b) {
+  if ($("#detail-dialog").open) $("#detail-dialog").close();
+  const now = Date.now() + monitor.offset;
+  const end = Date.parse(b.end), start = Date.parse(b.start);
+  const booked = Math.round((end - start) / 60000);
+  if (b.complimentary || now >= end - 60_000) {
+    if (confirm(`Check-out ${b.customer_name}? Alarm di TV akan berhenti.`)) {
+      await doAction(b, "checkout", {}, `Check-out ${b.customer_name}`);
+    }
+    return;
+  }
+  const checkedIn = Date.parse(b.checked_in_at) > 0 ? Date.parse(b.checked_in_at) : start;
+  const used = Math.max(0, Math.ceil((now - checkedIn) / 60000));
+  const billed = billableMinutes(used, booked);
+  const usagePrice = Math.round(b.rate_per_hour * billed / 60);
+  checkoutBooking = b;
+  $("#co-title").textContent = `Check-out lebih awal · ${b.customer_name}`;
+  $("#co-facts").textContent = `Booking ${fmtDuration(booked)} (${hm(new Date(start))}–${hm(new Date(end))}), terpakai ${fmtDuration(used)} sejak check-in ${hm(new Date(checkedIn))}.`;
+  $("#co-booked").textContent = `${fmtDuration(booked)} · ${rupiah.format(b.total_price)}`;
+  $("#co-usage-text").textContent = billed >= booked
+    ? `Sama dengan booking (${fmtDuration(booked)})`
+    : `${fmtDuration(billed)} · ${rupiah.format(usagePrice)} (dibulatkan ke atas per 30 menit, minimal 1 jam)`;
+  const allowed = can("booking.bill_by_usage") && billed < booked;
+  $("#co-usage").disabled = !allowed;
+  $("#co-usage-hint").textContent = can("booking.bill_by_usage") ? "" : "Tagih sesuai pemakaian hanya bisa oleh supervisor atau admin.";
+  $("#checkout-form").reset();
+  $("#checkout-dialog").showModal();
+}
+
+async function submitCheckout(e) {
+  e.preventDefault();
+  const b = checkoutBooking;
+  const bill = $("#checkout-form").querySelector("input[name=bill]:checked").value;
+  const btn = $("#checkout-form button[type=submit]");
+  btn.disabled = true;
+  try {
+    await doAction(b, "checkout", { bill }, bill === "usage" ? `Check-out ${b.customer_name}, ditagih sesuai pemakaian` : `Check-out ${b.customer_name}`);
+    $("#checkout-dialog").close();
+  } catch (err) {
+    flash(err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------- WhatsApp to the guest ----------
@@ -551,6 +614,7 @@ function bookingItem(b) {
         el("span", { class: `badge ${st}`, text: statusText(b) }))),
     el("div", { class: "who", text: b.customer_name + (b.phone ? ` · ${b.phone}` : "") }),
     el("div", { class: "meta", text: `${fmtDuration(minutes)} · ${priceText(b)}${b.notes ? ` · ${b.notes}` : ""}` }),
+    usageText(b) ? el("div", { class: "meta", text: usageText(b) }) : null,
     b.complimentary ? el("div", { class: "meta", text: `Alasan compliment: ${b.compliment_reason}` }) : null,
     by ? el("div", { class: "meta", text: by }) : null,
     actions.childElementCount ? actions : null,
@@ -1183,6 +1247,8 @@ async function init() {
   $("#f-start").addEventListener("change", updateTotal);
   $("#f-name").addEventListener("input", () => $("#f-name").setCustomValidity(""));
   $("#wa-form").addEventListener("submit", sendWhatsApp);
+  $("#checkout-form").addEventListener("submit", submitCheckout);
+  $("#checkout-dialog").querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", () => $("#checkout-dialog").close()));
   $("#wa-kind").addEventListener("change", () => { if (waBooking) $("#wa-text").value = waMessage($("#wa-kind").value, waBooking); });
   $("#wa-dialog").querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", () => $("#wa-dialog").close()));
   $("#pricing-add").addEventListener("click", () => $("#pricing-rows").append(pricingRow({ day_type: "weekday", start: "11:00", end: "17:00", rate_per_hour: "" })));

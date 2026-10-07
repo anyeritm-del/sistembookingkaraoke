@@ -9,7 +9,7 @@
 //	          status | rate_per_hour | total_price | notes | checked_in_at |
 //	          checked_out_at | created_at | updated_at | created_by |
 //	          checked_in_by | checked_out_by | cancelled_by | confirmed_by | hold_until |
-//	          complimentary | compliment_reason
+//	          complimentary | compliment_reason | billed_minutes
 //	Users:    username | name | role | pin_hash | active | created_at | updated_at
 //	Activity: time | username | action | booking_id | room_id | detail
 //	Pricing:  day_type | start | end | rate_per_hour   (weekday/weekend, HH:MM)
@@ -55,7 +55,7 @@ var (
 		"status", "rate_per_hour", "total_price", "notes", "checked_in_at",
 		"checked_out_at", "created_at", "updated_at",
 		"created_by", "checked_in_by", "checked_out_by", "cancelled_by",
-		"confirmed_by", "hold_until", "complimentary", "compliment_reason",
+		"confirmed_by", "hold_until", "complimentary", "compliment_reason", "billed_minutes",
 	}
 	UserColumns     = []string{"username", "name", "role", "pin_hash", "active", "created_at", "updated_at"}
 	ActivityColumns = []string{"time", "username", "action", "booking_id", "room_id", "detail"}
@@ -682,6 +682,11 @@ func (s *Store) parseBooking(row []any, c map[string]int) (booking.Booking, erro
 	if b.TotalPrice, err = cellInt(row, c["total_price"]); err != nil {
 		return b, fmt.Errorf("total_price: %w", err)
 	}
+	billed, err := cellInt(row, c["billed_minutes"])
+	if err != nil {
+		return b, fmt.Errorf("billed_minutes: %w", err)
+	}
+	b.BilledMinutes = int(billed)
 	for name, dst := range map[string]*time.Time{
 		"checked_in_at": &b.CheckedInAt, "checked_out_at": &b.CheckedOutAt,
 		"created_at": &b.CreatedAt, "updated_at": &b.UpdatedAt,
@@ -721,6 +726,7 @@ func (s *Store) bookingValues(b booking.Booking) map[string]any {
 		"hold_until":        s.formatTime(b.HoldUntil, minuteLayout),
 		"complimentary":     b.Complimentary,
 		"compliment_reason": b.ComplimentReason,
+		"billed_minutes":    billedCell(b.BilledMinutes),
 	}
 }
 
@@ -738,6 +744,14 @@ func (s *Store) deviceValues(d booking.Device) map[string]any {
 		"paired_at":      s.formatTime(d.PairedAt, secondLayout),
 		"revoked_by":     d.RevokedBy,
 	}
+}
+
+// billedCell leaves the cell empty when the booked time was billed.
+func billedCell(m int) any {
+	if m == 0 {
+		return ""
+	}
+	return m
 }
 
 func roomValues(r booking.Room) map[string]any {

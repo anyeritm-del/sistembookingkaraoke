@@ -414,3 +414,22 @@ func TestComplimentOverHTTP(t *testing.T) {
 		t.Errorf("csv compliment columns: %s", rec.Body)
 	}
 }
+
+func TestEarlyCheckoutOverHTTP(t *testing.T) {
+	s := newTestServer(t) // clock 18:00
+	admin := login(t, s, "admin", "112233")
+	rec := do(t, s, "POST", "/api/bookings", `{"room_id":"R01","customer_name":"A","start":"2026-10-01T17:30","duration_minutes":120}`, admin)
+	var b booking.Booking
+	json.Unmarshal(rec.Body.Bytes(), &b)
+	do(t, s, "POST", "/api/bookings/"+b.ID+"/checkin", "{}", admin)
+	rec = do(t, s, "POST", "/api/bookings/"+b.ID+"/checkout", `{"bill":"usage"}`, admin)
+	json.Unmarshal(rec.Body.Bytes(), &b)
+	// Checked in and out at 18:00: used 0 -> billed the 1-hour minimum.
+	if rec.Code != 200 || b.BilledMinutes != 60 || b.TotalPrice != 100000 {
+		t.Fatalf("checkout by usage: %d %s", rec.Code, rec.Body)
+	}
+	rec = do(t, s, "GET", "/api/export/bookings.csv?from=2026-10-01&to=2026-10-01", "", admin)
+	if !strings.Contains(rec.Body.String(), "menit_pakai,menit_ditagih") || !strings.Contains(rec.Body.String(), ",0,60") { // 0 minutes used, 60 billed
+		t.Errorf("csv minutes: %s", rec.Body)
+	}
+}

@@ -337,6 +337,20 @@ dialog .total { font-size: 1.05rem; font-weight: 700; margin-block: .25rem 1rem;
 }
 .dialog-total-comp { background: #f3e8ff !important; color: #6b21a8 !important; }
 
+/* ---------- Early check-out ---------- */
+.co-facts { margin: 0 0 1rem; color: var(--muted); }
+.co-options { border: 0; padding: 0; margin: 0 0 .5rem; display: grid; gap: .5rem; }
+.co-options legend { font-weight: 600; font-size: .85rem; color: #334155; margin-bottom: .35rem; padding: 0; }
+.co-option {
+  display: flex; gap: .7rem; align-items: flex-start; padding: .75rem .9rem; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+}
+.co-option:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.co-option:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.co-option input { width: 1.1rem; min-height: 0; margin-top: .2rem; accent-color: var(--brand); }
+.co-option > span { display: grid; }
+.co-option > span > span { color: var(--muted); font-size: .9rem; }
+
 /* ---------- WhatsApp ---------- */
 .btn.wa { color: #128c4b; border-color: #a7e3c0; }
 .btn.wa:hover { background: #ecfdf3; border-color: #4ade80; }

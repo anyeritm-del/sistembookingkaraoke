@@ -268,7 +268,12 @@ func (s *Service) CheckIn(ctx context.Context, actor User, id string) (Booking, 
 }
 
 // CheckOut finishes a checked-in booking. The TV alarm stops.
-func (s *Service) CheckOut(ctx context.Context, actor User, id string) (Booking, error) {
+// With byUsage, an early check-out is billed for the time used (see
+// BillableMinutes) instead of the booked time; that needs PermBillByUsage.
+func (s *Service) CheckOut(ctx context.Context, actor User, id string, byUsage bool) (Booking, error) {
+	if byUsage && !actor.Can(PermBillByUsage) {
+		return Booking{}, fmt.Errorf("%w: tagih sesuai pemakaian hanya untuk supervisor atau admin", ErrForbidden)
+	}
 	return s.change(ctx, actor, PermCheckOut, ActCheckOut, id, func(b *Booking, _ []Booking, now time.Time) (string, error) {
 		if b.Status != StatusCheckedIn {
 			return "", ErrWrongState
@@ -276,7 +281,20 @@ func (s *Service) CheckOut(ctx context.Context, actor User, id string) (Booking,
 		b.Status = StatusFinished
 		b.CheckedOutAt = now
 		b.CheckedOutBy = actor.Username
-		return fmt.Sprintf("%s, total %s", b.CustomerName, rupiah(b.TotalPrice)), nil
+		detail := fmt.Sprintf("%s, total %s", b.CustomerName, rupiah(b.TotalPrice))
+		if !byUsage || b.Complimentary || !now.Before(b.End) {
+			return detail, nil
+		}
+		booked := b.DurationMinutes()
+		billed := BillableMinutes(b.UsedMinutes(), booked)
+		if billed >= booked {
+			return detail + " (pemakaian penuh, tagihan tetap)", nil
+		}
+		before := b.TotalPrice
+		b.BilledMinutes = billed
+		b.TotalPrice = Price(b.RatePerHour, billed)
+		return fmt.Sprintf("%s, check-out lebih awal, tagih sesuai pemakaian: %d menit dipakai, ditagih %d dari %d menit, total %s (sebelumnya %s)",
+			b.CustomerName, b.UsedMinutes(), billed, booked, rupiah(b.TotalPrice), rupiah(before)), nil
 	})
 }
 
@@ -448,7 +466,7 @@ func (s *Service) Report(ctx context.Context, actor User, fromDay, toDay time.Ti
 		default:
 			continue
 		}
-		minutes := b.DurationMinutes()
+		minutes := b.UsedMinutes()
 		rep.Minutes += minutes
 		rep.Revenue += b.TotalPrice
 		if b.Complimentary {

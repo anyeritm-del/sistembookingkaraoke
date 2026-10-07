@@ -79,7 +79,7 @@ func TestAuditAndBookingBy(t *testing.T) {
 	b, _ := f.svc.Create(f.ctx, f.staff, booking.CreateInput{RoomID: "R01", CustomerName: "Tamu", Start: at("18:00"), DurationMinutes: 60})
 	b, _ = f.svc.CheckIn(f.ctx, f.staff, b.ID)
 	b, _ = f.svc.Extend(f.ctx, f.sup, b.ID, 30)
-	b, err := f.svc.CheckOut(f.ctx, f.sup, b.ID)
+	b, err := f.svc.CheckOut(f.ctx, f.sup, b.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
