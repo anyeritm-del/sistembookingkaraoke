@@ -13,8 +13,9 @@ func TestComplimentBooking(t *testing.T) {
 	in := booking.CreateInput{RoomID: "R01", CustomerName: "Tamu VIP", Start: at("18:00"),
 		DurationMinutes: 120, Complimentary: true, ComplimentReason: "  tamu GM  "}
 
-	if _, err := f.svc.Create(f.ctx, f.staff, in); !errors.Is(err, booking.ErrForbidden) {
-		t.Errorf("staff compliment: %v", err)
+	acc := booking.User{Username: "ani", Role: booking.RoleAccounting, Active: true}
+	if _, err := f.svc.Create(f.ctx, acc, in); !errors.Is(err, booking.ErrForbidden) {
+		t.Errorf("accounting compliment: %v", err)
 	}
 	noReason := in
 	noReason.ComplimentReason = " "
@@ -28,9 +29,13 @@ func TestComplimentBooking(t *testing.T) {
 		t.Errorf("tentative compliment: %v", err)
 	}
 
-	b, err := f.svc.Create(f.ctx, f.sup, in)
+	// Staff may make compliments (a reason is still required).
+	b, err := f.svc.Create(f.ctx, f.staff, in)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if b.CreatedBy != "sari" {
+		t.Errorf("created_by = %q", b.CreatedBy)
 	}
 	if !b.Complimentary || b.ComplimentReason != "tamu GM" || b.TotalPrice != 0 ||
 		b.RatePerHour != 100000 || b.NormalPrice() != 200000 || b.Status != booking.StatusBooked {

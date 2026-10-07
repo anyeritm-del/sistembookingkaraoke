@@ -118,7 +118,7 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 	in.ComplimentReason = strings.TrimSpace(in.ComplimentReason)
 	if in.Complimentary {
 		if !actor.Can(PermCompliment) {
-			return Booking{}, fmt.Errorf("%w: booking compliment hanya untuk supervisor atau admin", ErrForbidden)
+			return Booking{}, fmt.Errorf("%w: anda tidak punya akses untuk booking compliment", ErrForbidden)
 		}
 		if in.Tentative {
 			return Booking{}, fmt.Errorf("%w: compliment tidak bisa tentative", ErrInvalid)

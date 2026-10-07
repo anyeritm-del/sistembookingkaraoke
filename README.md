@@ -50,7 +50,7 @@ Sistem ini tidak mengirim pesan sendiri.
 | Booking baru, check-in, perpanjang, check-out | ✓ | ✓ | ✓ |  |
 | Konfirmasi Tentative, batalkan Tentative | ✓ | ✓ | ✓ |  |
 | Batalkan booking Confirm | | ✓ | ✓ |  |
-| Booking Compliment (gratis, alasan wajib) | | ✓ | ✓ |  |
+| Booking Compliment (gratis, alasan wajib) | ✓ | ✓ | ✓ |  |
 | Check-out lebih awal, tagih sesuai pemakaian | | ✓ | ✓ |  |
 | Laporan (harian atau rentang tanggal), log aktivitas | | ✓ | ✓ | ✓ |
 | Kelola room (tambah, ubah nama, aktif/nonaktif) dan tabel harga | | | ✓ |  |
@@ -100,7 +100,7 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   itu tampil **Kedaluwarsa** dan slot terbuka untuk tamu lain. Booking
   kedaluwarsa masih bisa dikonfirmasi jika slotnya masih kosong. Tentative harus
   dikonfirmasi dulu sebelum check-in, dan tidak bisa diperpanjang.
-- **Compliment** (gratis): hanya supervisor & admin, alasan wajib diisi.
+- **Compliment** (gratis): staff, supervisor & admin; alasan wajib diisi.
   Statusnya Confirm, total Rp 0 termasuk perpanjangan; harga normal tetap
   disimpan. Laporan menampilkan jumlah, jam, dan nilai normal compliment
   (tidak masuk pendapatan); CSV punya kolom `compliment`, `alasan_compliment`,

@@ -54,7 +54,7 @@ const (
 var permissions = map[Role][]Permission{
 	RoleStaff: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
-		PermConfirm, PermCancelTentative,
+		PermConfirm, PermCancelTentative, PermCompliment,
 	},
 	RoleSupervisor: {
 		PermViewSchedule, PermCreateBooking, PermCheckIn, PermExtend, PermCheckOut,
