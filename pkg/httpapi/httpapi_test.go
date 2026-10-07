@@ -396,11 +396,15 @@ func TestComplimentOverHTTP(t *testing.T) {
 	admin := login(t, s, "admin", "112233")
 	do(t, s, "POST", "/api/users", `{"username":"sari","name":"Sari","role":"staff","pin":"582047"}`, admin)
 	staff := login(t, s, "sari", "582047")
-	body := `{"room_id":"R01","customer_name":"VIP","start":"2026-10-01T19:00","duration_minutes":60,"complimentary":true,"compliment_reason":"kompensasi keluhan"}`
+	body := `{"room_id":"R01","customer_name":"VIP","start":"2026-10-01T19:00","duration_minutes":60,"complimentary":true,"compliment_reason":"kompensasi keluhan","voucher_number":"HK-9"}`
 	do(t, s, "POST", "/api/users", `{"username":"ani","name":"Ani","role":"accounting","pin":"693158"}`, admin)
 	acc := login(t, s, "ani", "693158")
 	if rec := do(t, s, "POST", "/api/bookings", body, acc); rec.Code != 403 {
 		t.Errorf("accounting compliment: %d %s", rec.Code, rec.Body)
+	}
+	noVoucher := strings.Replace(body, `,"voucher_number":"HK-9"`, "", 1)
+	if rec := do(t, s, "POST", "/api/bookings", noVoucher, staff); rec.Code != 400 {
+		t.Errorf("compliment without voucher: %d %s", rec.Code, rec.Body)
 	}
 	rec := do(t, s, "POST", "/api/bookings", body, staff)
 	var b booking.Booking

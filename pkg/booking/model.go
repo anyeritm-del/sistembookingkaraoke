@@ -70,8 +70,8 @@ type Booking struct {
 	// RatePerHour keeps the normal rate so reports can show what was given away.
 	Complimentary    bool   `json:"complimentary"`
 	ComplimentReason string `json:"compliment_reason"`
-	// VoucherNumber is the voucher a compliment was given for. A voucher can
-	// be used by one booking that is not cancelled.
+	// VoucherNumber is the voucher a compliment was given for (required for
+	// compliments). A voucher can be used by one booking that is not cancelled.
 	VoucherNumber string `json:"voucher_number"`
 	// BilledMinutes is set when an early check-out was billed by usage;
 	// 0 means the booked duration was billed.

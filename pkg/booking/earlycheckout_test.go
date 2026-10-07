@@ -84,18 +84,23 @@ func TestByUsageIgnoredWhenNotEarlyOrFree(t *testing.T) {
 	b, _ := f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R01", CustomerName: "Telat", Start: at("17:00"), DurationMinutes: 60})
 	f.svc.CheckIn(f.ctx, f.staff, b.ID)
 	f.now = at("18:10") // past the end
-	got, _ := f.svc.CheckOut(f.ctx, f.sup, b.ID, true)
-	if got.TotalPrice != 100000 || got.BilledMinutes != 0 {
+	got, err := f.svc.CheckOut(f.ctx, f.sup, b.ID, true)
+	if err != nil || got.TotalPrice != 100000 || got.BilledMinutes != 0 {
 		t.Errorf("late check-out: %+v", got)
 	}
 
 	f.now = at("18:00")
-	c, _ := f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R02", CustomerName: "VIP", Start: at("18:00"),
-		DurationMinutes: 120, Complimentary: true, ComplimentReason: "GM"})
-	f.svc.CheckIn(f.ctx, f.staff, c.ID)
+	c, err := f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R02", CustomerName: "VIP", Start: at("18:00"),
+		DurationMinutes: 120, Complimentary: true, ComplimentReason: "GM", VoucherNumber: "V-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.CheckIn(f.ctx, f.staff, c.ID); err != nil {
+		t.Fatal(err)
+	}
 	f.now = f.now.Add(20 * time.Minute)
-	got, _ = f.svc.CheckOut(f.ctx, f.sup, c.ID, true)
-	if got.TotalPrice != 0 || got.BilledMinutes != 0 {
+	got, err = f.svc.CheckOut(f.ctx, f.sup, c.ID, true)
+	if err != nil || got.Status != booking.StatusFinished || got.TotalPrice != 0 || got.BilledMinutes != 0 {
 		t.Errorf("compliment early: %+v", got)
 	}
 }

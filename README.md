@@ -105,7 +105,7 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
   disimpan. Laporan menampilkan jumlah, jam, dan nilai normal compliment
   (tidak masuk pendapatan); CSV punya kolom `compliment`, `alasan_compliment`,
   `nilai_normal`. Tercatat di Aktivitas beserta alasannya.
-  Kolom **Nomor voucher** (opsional) untuk compliment dari voucher: disimpan
+  Kolom **Nomor voucher** wajib diisi untuk setiap compliment: disimpan
   huruf besar, satu voucher hanya untuk satu booking yang tidak dibatalkan
   (dibatalkan → voucher bisa dipakai lagi), bisa dicari di tab Daftar, ikut di
   CSV (`voucher`) dan Aktivitas.

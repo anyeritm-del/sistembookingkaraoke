@@ -94,7 +94,7 @@ type CreateInput struct {
 	// and a reason.
 	Complimentary    bool   `json:"complimentary"`
 	ComplimentReason string `json:"compliment_reason"`
-	// VoucherNumber is optional and only kept for compliments.
+	// VoucherNumber is required for compliments and ignored otherwise.
 	VoucherNumber string `json:"voucher_number"`
 }
 
@@ -127,7 +127,10 @@ func (s *Service) Create(ctx context.Context, actor User, in CreateInput) (Booki
 			return Booking{}, fmt.Errorf("%w: alasan compliment wajib diisi (maks. 200 karakter)", ErrInvalid)
 		}
 		in.VoucherNumber = strings.ToUpper(strings.TrimSpace(in.VoucherNumber))
-		if in.VoucherNumber != "" && !voucherRe.MatchString(in.VoucherNumber) {
+		if in.VoucherNumber == "" {
+			return Booking{}, fmt.Errorf("%w: nomor voucher wajib diisi untuk compliment", ErrInvalid)
+		}
+		if !voucherRe.MatchString(in.VoucherNumber) {
 			return Booking{}, fmt.Errorf("%w: nomor voucher hanya huruf, angka, - / . _ (maks. 40 karakter)", ErrInvalid)
 		}
 	} else {

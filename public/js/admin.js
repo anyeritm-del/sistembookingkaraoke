@@ -1111,6 +1111,7 @@ function openBookingDialog(prefill = {}) {
   $("#f-kind-hint").hidden = true;
   $("#f-comp-field").hidden = true;
   $("#f-voucher-field").hidden = true;
+  $("#f-voucher").required = false;
   $("#f-comp-reason").required = false;
   $("#f-total").classList.remove("dialog-total-comp");
   $("#booking-error").hidden = true;
@@ -1251,6 +1252,10 @@ async function init() {
   $("#f-duration").addEventListener("change", updateTotal);
   $("#f-start").addEventListener("change", updateTotal);
   $("#f-name").addEventListener("input", () => $("#f-name").setCustomValidity(""));
+  $("#f-voucher").addEventListener("invalid", () => {
+    if ($("#f-voucher").validity.valueMissing) $("#f-voucher").setCustomValidity("Nomor voucher wajib diisi untuk compliment.");
+  });
+  $("#f-voucher").addEventListener("input", () => $("#f-voucher").setCustomValidity(""));
   $("#wa-form").addEventListener("submit", sendWhatsApp);
   $("#checkout-form").addEventListener("submit", submitCheckout);
   $("#checkout-dialog").querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", () => $("#checkout-dialog").close()));
@@ -1264,6 +1269,7 @@ async function init() {
       $("#f-kind-hint").hidden = kind !== "tentative";
       $("#f-comp-field").hidden = kind !== "compliment";
       $("#f-voucher-field").hidden = kind !== "compliment";
+      $("#f-voucher").required = kind === "compliment";
       $("#f-comp-reason").required = kind === "compliment";
       updateTotal();
     });

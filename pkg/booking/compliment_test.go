@@ -11,7 +11,7 @@ import (
 func TestComplimentBooking(t *testing.T) {
 	f := newFixture(t) // Thursday 18:00, no price table: R01 = 100000/hour
 	in := booking.CreateInput{RoomID: "R01", CustomerName: "Tamu VIP", Start: at("18:00"),
-		DurationMinutes: 120, Complimentary: true, ComplimentReason: "  tamu GM  "}
+		DurationMinutes: 120, Complimentary: true, ComplimentReason: "  tamu GM  ", VoucherNumber: "HK-001"}
 
 	acc := booking.User{Username: "ani", Role: booking.RoleAccounting, Active: true}
 	if _, err := f.svc.Create(f.ctx, acc, in); !errors.Is(err, booking.ErrForbidden) {
@@ -21,6 +21,11 @@ func TestComplimentBooking(t *testing.T) {
 	noReason.ComplimentReason = " "
 	if _, err := f.svc.Create(f.ctx, f.sup, noReason); !errors.Is(err, booking.ErrInvalid) {
 		t.Errorf("no reason: %v", err)
+	}
+	noVoucher := in
+	noVoucher.VoucherNumber = "  "
+	if _, err := f.svc.Create(f.ctx, f.sup, noVoucher); !errors.Is(err, booking.ErrInvalid) {
+		t.Errorf("no voucher: %v", err)
 	}
 	tent := in
 	tent.Tentative = true
@@ -102,9 +107,9 @@ func TestComplimentVoucher(t *testing.T) {
 	if _, err := comp("R01", "21:00", "bad voucher!"); !errors.Is(err, booking.ErrInvalid) {
 		t.Errorf("bad format: %v", err)
 	}
-	// Optional: a compliment without a voucher is fine.
-	if b, err := comp("R01", "22:00", ""); err != nil || b.VoucherNumber != "" {
-		t.Errorf("no voucher: %+v %v", b, err)
+	// Required: a compliment without a voucher is refused.
+	if _, err := comp("R01", "22:00", ""); !errors.Is(err, booking.ErrInvalid) {
+		t.Errorf("no voucher: %v", err)
 	}
 	// Not a compliment: the voucher is dropped.
 	plain, _ := f.svc.Create(f.ctx, f.sup, booking.CreateInput{RoomID: "R02", CustomerName: "Biasa",
