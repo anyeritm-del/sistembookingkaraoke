@@ -25,13 +25,17 @@ func TestRateAt(t *testing.T) {
 		want int64
 	}{
 		// 2026-10-01 is a Thursday, 2026-10-02 Friday, 10-03 Saturday, 10-04 Sunday, 10-05 Monday.
+		// Weekday = Monday-Thursday, weekend = Friday-Sunday.
 		{"2026-10-01 11:00", 60000},
 		{"2026-10-01 16:59", 60000},
 		{"2026-10-01 17:00", 120000},
 		{"2026-10-01 22:30", 120000},
 		{"2026-10-01 10:59", 120000}, // before opening counts as evening rate
-		{"2026-10-02 23:30", 120000}, // Friday night
-		{"2026-10-03 00:30", 170000}, // after midnight it is Saturday
+		{"2026-10-01 23:30", 120000}, // Thursday night is still weekday
+		{"2026-10-02 00:30", 170000}, // after midnight it is Friday: weekend
+		{"2026-10-02 11:00", 85000},  // Friday day
+		{"2026-10-02 23:30", 170000}, // Friday night
+		{"2026-10-03 00:30", 170000}, // Saturday early morning
 		{"2026-10-03 11:00", 85000},
 		{"2026-10-03 16:30", 85000},
 		{"2026-10-03 17:00", 170000},

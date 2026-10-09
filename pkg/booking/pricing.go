@@ -14,13 +14,15 @@ import (
 type DayType string
 
 const (
-	Weekday DayType = "weekday" // Monday to Friday
-	Weekend DayType = "weekend" // Saturday and Sunday
+	// The stored values stay "weekday"/"weekend"; since 2026-10-09 the
+	// weekend rate starts on Friday.
+	Weekday DayType = "weekday" // Monday to Thursday
+	Weekend DayType = "weekend" // Friday, Saturday and Sunday
 )
 
 // DayTypeOf returns the day type of t's calendar date.
 func DayTypeOf(t time.Time) DayType {
-	if wd := t.Weekday(); wd == time.Saturday || wd == time.Sunday {
+	if wd := t.Weekday(); wd == time.Friday || wd == time.Saturday || wd == time.Sunday {
 		return Weekend
 	}
 	return Weekday
@@ -114,7 +116,7 @@ func ValidatePricing(rules []PriceRule) error {
 		}
 	}
 	for _, dt := range []DayType{Weekday, Weekend} {
-		label := map[DayType]string{Weekday: "Senin-Jumat", Weekend: "Sabtu-Minggu"}[dt]
+		label := map[DayType]string{Weekday: "Senin-Kamis", Weekend: "Jumat-Minggu"}[dt]
 		var count [minutesPerDay]int
 		for _, r := range rules {
 			if r.DayType != dt {

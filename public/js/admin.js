@@ -921,8 +921,8 @@ const DEFAULT_PRICING = [
 
 function pricingRow(rule) {
   const day = el("select", { "aria-label": "Hari" },
-    el("option", { value: "weekday", text: "Senin – Jumat" }),
-    el("option", { value: "weekend", text: "Sabtu – Minggu" }));
+    el("option", { value: "weekday", text: "Senin – Kamis" }),
+    el("option", { value: "weekend", text: "Jumat – Minggu" }));
   day.value = rule.day_type;
   const start = el("input", { type: "time", required: "", "aria-label": "Jam mulai dari", value: rule.start });
   const end = el("input", { type: "time", required: "", "aria-label": "Sampai sebelum", value: rule.end });

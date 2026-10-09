@@ -128,12 +128,14 @@ tentative ──konfirmasi──> booked (Confirm) ──check-in──> checked
 
   | Hari | Mulai 11:00 – 16:59 | Mulai 17:00 – 10:59 |
   |---|---|---|
-  | Senin – Jumat | Rp 60.000 / jam | Rp 120.000 / jam |
-  | Sabtu – Minggu | Rp 85.000 / jam | Rp 170.000 / jam |
+  | Senin – Kamis | Rp 60.000 / jam | Rp 120.000 / jam |
+  | Jumat – Minggu | Rp 85.000 / jam | Rp 170.000 / jam |
 
   Harga per jam ditentukan oleh **jam mulai**; seluruh durasi dan perpanjangan
   memakai harga itu (16:00–18:00 hari kerja = 2 × 60.000). Hari dihitung dari
-  tanggal kalender jam mulai (Sabtu 00:30 = weekend). Durasi kelipatan 30 menit,
+  tanggal kalender jam mulai (Kamis 23:30 = Senin–Kamis; Jumat 00:30 =
+  Jumat–Minggu). Di tab `Pricing`, `weekday` = Senin–Kamis dan `weekend` =
+  Jumat–Minggu. Durasi kelipatan 30 menit,
   maks 12 jam. Harga dikunci saat booking dibuat, jadi perubahan harga tidak
   mengubah booking lama. Jika tab `Pricing` dikosongkan, tarif per room di tab
   `Rooms` dipakai lagi.
